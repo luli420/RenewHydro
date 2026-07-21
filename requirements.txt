@@ -1,0 +1,13 @@
+# Evanger runoff extraction — Python dependencies
+# Tested against Python 3.10+ (matches the `evanger` conda env on Olivia)
+
+xarray>=2024.1.0
+netCDF4>=1.6.5
+pydap>=3.4          # fallback OPeNDAP engine if netCDF4/HDF5 client fails
+rioxarray>=0.15.0
+geopandas>=0.14.0
+exactextract>=0.2.0
+pandas>=2.1.0
+numpy>=1.26.0
+pyproj>=3.6.0
+shapely>=2.0.0

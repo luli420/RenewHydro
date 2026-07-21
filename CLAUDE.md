@@ -1,0 +1,138 @@
+# RenewHydro / Evanger runoff projections (KiN2025)
+
+Context for whoever (human or Claude Code) picks this project up next.
+
+## Goal
+
+Extract projected runoff for all subcatchments feeding the Evanger
+hydropower system (BKK, Voss/Vaksdal, western Norway) from the NCCS
+"Klima i Norge 2025" (KiN2025) dataset, as future water-availability input
+for the plant.
+
+## Data source
+
+- Dataset: NCCS "Klima i Norge 2025" (KiN2025), Dyrrdal et al. 2025 -- NVE
+  + MET Norway, 1 km gridded NetCDF-CF, served on `thredds.met.no`.
+- Landing page: https://adc.met.no/dataset/ceb8319c-5ebe-51cc-8359-959067daeadd
+- Grid/CRS: KliNoGrid/seNorge, UTM33N (EPSG:25833). Always read the CRS
+  from each file's `grid_mapping` variable first; only fall back to
+  EPSG:25833 if that's missing (see `get_grid_crs()` in the script).
+- Runoff variable: `mrro` (mean runoff amount, mm) -- output of the
+  distHBV model (Beldring et al. 2003) with the DEW glacier model blended
+  in for glacierized cells. This is **natural (unregulated) runoff** --
+  no reservoir operation or inter-basin transfer is represented in the
+  grid.
+- Reference (1991-2020):
+  `.../ReferenceIndices/mrro30plt/reference_1991-2020_disthbv_norway_1km_mrro30plt.nc`
+  -- **token needs confirming** against the actual THREDDS catalog (see
+  "Open items" below).
+- Projected change:
+  `.../ClimateStatistics/diff-mrro/<member>_<rcp>_both-bc-estobs_disthbv_norway_1km_diff-mrro.nc`
+  - Absolute change in mm; 2 time steps (t0 = 2041-2070, t1 = 2071-2100)
+  - Scenarios: rcp26 / rcp45 / rcp85; `ensemble-mean` or individual
+    GCM-RCM members
+  - Future runoff = reference `mrro` + `diff-mrro`
+- Access via OPeNDAP (`dodsC`), **not** `fileServer` -- avoids pulling the
+  entire Norway grid for a small set of catchments.
+
+## Catchment delineation
+
+- Delineated in NEVINA (nevina.nve.no), one polygon per node: Bulken
+  intake dam, each `Inntakspunkt`, tributary junctions, downstream outlet.
+- NEVINA returns *total* (accumulated) upstream catchments, so nesting =
+  downstream accumulation automatically.
+- Local/incremental (delfelt) subcatchments are derived by **polygon
+  containment differencing** in `extract_evanger_runoff.py`
+  (`derive_containment` / `derive_immediate_children` /
+  `derive_local_geometries`) -- no manual topology input is needed. This
+  works by checking, for each pair of nodes, whether one polygon's area is
+  (almost entirely, >= 98%) contained in another's, then reducing that to
+  each node's *immediate* upstream children before differencing.
+- Exported polygons are merged into one GeoPackage with a `node` ID
+  column: `evanger_nevina_catchments.gpkg` (not committed -- see
+  "Data files" below).
+
+## Natural vs. regulated Bulken -- still open
+
+Bulken has an Evanger intake dam, so:
+
+- **Without reservoir influence (natural)**: direct from the grid --
+  accumulated `mrro` over Bulken's NEVINA total catchment. The script does
+  this already (it only ever computes natural/unregulated runoff).
+- **With reservoir influence (regulated)**: NOT in the grid. Two options
+  proposed, **not yet chosen**:
+  - (a) NVE observed regulated series + delta-change: apply the projected
+    % change (future / reference from the grid) onto Bulken's actual
+    regulated flow record.
+  - (b) Explicit routing / water-balance using the diversion topology and
+    operating rules of the Bulken intake.
+
+  Decide (a) vs (b) before adding a regulated-Bulken module.
+
+## Method
+
+- Area-weighted zonal statistics via `exactextract` (handles partial 1 km
+  grid cells correctly for small catchment units) -- see `zonal_mean_mm()`.
+- Outputs two CSVs (long format: `node, rcp, member, period, mrro_mm,
+  area_km2, volume_Mm3`):
+  - `evanger_runoff_nodes.csv` -- accumulated (total upstream) runoff per
+    node
+  - `evanger_runoff_local.csv` -- incremental (local/delfelt) runoff per
+    subcatchment
+- Volume conversion: 1 mm over 1 km^2 = 1000 m^3 = 0.001 Mm^3, so
+  `volume_Mm3 = mrro_mm * area_km2 / 1000`.
+
+## Deployment
+
+- **GitHub** is the source of truth for code (script, this file,
+  `requirements.txt`). NetCDF/large data files are not committed.
+- **Claude Code GitHub App** (`@claude` in issues/PRs) is used for code
+  review/edits -- it runs on GitHub-hosted runners with no HPC/file
+  access, so it produces PRs, not executed results.
+- **Olivia (HPC)** does the actual execution: `git clone` / `git pull` the
+  repo on the login node (compute nodes lack internet, which is needed for
+  OPeNDAP), `conda activate evanger`, run the script there. There is no
+  automated push-to-HPC CI -- most HPC systems block inbound connections
+  -- so syncing is a manual `git pull` on Olivia.
+
+## Data files (not committed)
+
+- `evanger_nevina_catchments.gpkg` -- merged NEVINA node polygons, must
+  have a `node` column. Referenced via `--catchments` on the CLI.
+- `output/evanger_runoff_nodes.csv`, `output/evanger_runoff_local.csv` --
+  generated by the script.
+
+## Open items / next steps
+
+1. **Decide natural-vs-regulated Bulken approach** (a or b above) so a
+   regulated-flow module can be added.
+2. **Confirm the exact OPeNDAP paths and variable names** by opening both
+   URLs and running `print(ds)`:
+   - `{OPENDAP_BASE}/ReferenceIndices/mrro30plt/...mrro30plt.nc`
+   - `{OPENDAP_BASE}/ClimateStatistics/diff-mrro/<member>_<rcp>_...diff-mrro.nc`
+   This environment could not reach `thredds.met.no` to verify (network
+   restricted); the script has fallback candidate lists
+   (`REFERENCE_MRRO_CANDIDATES`, `REFERENCE_VAR_CANDIDATES`,
+   `DIFF_VAR_CANDIDATES`) but they are unverified guesses based on the
+   dataset documentation and should be checked against the real files
+   (e.g. from Olivia's login node) before trusting any output.
+3. **Export/merge NEVINA catchment polygons** into
+   `evanger_nevina_catchments.gpkg` (manual step via nevina.nve.no).
+4. Clone/pull this repo on Olivia's login node, install
+   `requirements.txt` into the `evanger` conda env, and run:
+   ```
+   python extract_evanger_runoff.py \
+       --catchments evanger_nevina_catchments.gpkg \
+       --rcps rcp26 rcp45 rcp85 \
+       --members ensemble-mean \
+       --out-dir output/
+   ```
+
+## Conventions
+
+- CRS handling: always prefer the CF `grid_mapping` attribute over
+  assuming EPSG:25833; only fall back when it's missing or unparseable.
+- Prefer OPeNDAP subsetting over downloading full grids.
+- Keep the two output CSVs in long format (one row per
+  node/rcp/member/period) rather than wide, so downstream analysis doesn't
+  need to know the scenario/period list in advance.
