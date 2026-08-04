@@ -281,14 +281,47 @@ Only then submit the full `run_layer1_array.sh` array.
 - Long-format / dimensioned outputs over wide tables, so downstream
   analysis doesn't need to know the scenario/period list in advance.
 
+## Single-basin quick extraction (extract_evanger_runoff.py)
+
+For a one-off basin with its own shapefile (not NVE's delfelt layer) and an
+archive already staged locally -- e.g. testing against Evangervatn on
+Olivia at `/cluster/work/projects/nn10014k/luli/kin2025` with the basin
+polygon at `/cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp`:
+
+```
+python extract_evanger_runoff.py \
+    --catchments /cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp \
+    --basin-name Evangervatn \
+    --archive-dir /cluster/work/projects/nn10014k/luli/kin2025 \
+    --out-dir /cluster/work/projects/nn10014k/luli/evangervatn/basin_mrro/ \
+    --scenarios hist --methods eqm --models cnrm-r1i1p1-aladin -v
+```
+
+Start with a single-model/single-scenario run like the one above (per the
+"Test sequence" above) before dropping the `--scenarios`/`--methods`/
+`--models` filters to run the full local archive. It auto-detects a small
+grid window around the basin (so it never reads the full ~1195x1550 Norway
+grid), reuses `build_weight_matrix`'s tested coverage-weighting and
+`extract_layer1_timeseries`'s tested extraction loop, and writes one
+long-format CSV (`basin, scenario, model, method, date, mrro_mm`) plus the
+weight matrix (for the "plot the mask" check) to `--out-dir`. The
+grid-window detection, weight matrix, and matmul extraction were verified
+against an independently hand-computed area-weighted mean on synthetic
+data in this session -- the parts that still need a real first run are the
+same as elsewhere: confirm the `mrro` units attribute and the archive's
+actual directory layout on Olivia.
+
 ## History
 
-The original approach (still present as `extract_evanger_runoff.py`)
-delineated catchments manually in NEVINA (nevina.nve.no) and derived
-local/incremental subcatchments by polygon-containment differencing,
-reading `ReferenceIndices`/`ClimateStatistics` OPeNDAP paths that were
-unverified guesses. That script is **superseded** by the delfelt-based
-pipeline above (NVE's own `oppstromDelfeltListe` topology makes the
-containment-differencing step unnecessary, and the confirmed
-`DailyTimeSeries/mrro` OPeNDAP path replaces the guessed one) but is left
-in the repo for reference; it is not part of the active pipeline.
+The very first version of this script delineated catchments manually in
+NEVINA (nevina.nve.no) and derived local/incremental subcatchments by
+polygon-containment differencing, reading `ReferenceIndices`/
+`ClimateStatistics` OPeNDAP paths that were unverified guesses. That
+approach is superseded by the delfelt-based Layer 1 pipeline above (NVE's
+own `oppstromDelfeltListe` topology makes the containment-differencing step
+unnecessary for the many-basin case) -- `extract_evanger_runoff.py` itself
+has since been rewritten (see "Single-basin quick extraction" above) rather
+than kept as dead code. A frozen copy of the original NEVINA-era version
+was saved by request as `Evanger_runoff_analysis.py` before the rewrite;
+it is not part of the active pipeline and duplicates none of the fixes
+made since.
