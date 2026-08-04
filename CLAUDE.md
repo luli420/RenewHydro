@@ -322,6 +322,8 @@ own `oppstromDelfeltListe` topology makes the containment-differencing step
 unnecessary for the many-basin case) -- `extract_evanger_runoff.py` itself
 has since been rewritten (see "Single-basin quick extraction" above) rather
 than kept as dead code. A frozen copy of the original NEVINA-era version
-was saved by request as `Evanger_runoff_analysis.py` before the rewrite;
-it is not part of the active pipeline and duplicates none of the fixes
-made since.
+was saved by request, first as `Evanger_runoff_analysis.py` and later
+renamed to **`extract_basin_runoff.py`**; it is not part of the active
+pipeline and duplicates none of the fixes made since. Mind the similar
+name to `extract_evanger_runoff.py` (the current, active single-basin
+script, unrelated NEVINA-era logic despite the name overlap).
