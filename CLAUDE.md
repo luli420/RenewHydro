@@ -34,11 +34,29 @@ must be extended to cover it (see "Region bounding box" below).
     lon/lat directly -- use `find_grid_index_bbox.py` to turn a lon/lat box
     into an `Yc`/`Xc` slice (2D `lat`/`lon` auxiliary coordinates are
     present on the grid for this).
+  - **Confirmed on the real archive on Olivia (2026-08)**: files carry
+    *only* `Xc`/`Yc` index dims plus 2D `lat`/`lon` in degrees -- there is
+    **no** projected `X`/`Y` in meters. `build_weight_matrix.get_transform()`
+    and `extract_basin_runoff.find_grid_window()` derive the affine
+    transform / grid window by reprojecting the (sliced) `lat`/`lon` into
+    the grid's CRS via `pyproj`, rather than assuming projected coordinate
+    variables exist (they still prefer `X`/`Y` if present, for
+    portability, but that path is unverified against any real file).
+  - Real archive on Olivia was found nested one level deeper than
+    `download_mrro_full_archive.sh`'s `OUT_DIR` might suggest at a glance:
+    `<archive_root>/mrro/<method>/<scenario>/<model>/*.nc4` -- pass the
+    `mrro/` level itself as `--archive-dir`/`--local-dir`.
   - **One file per (bias-adjustment method, GCM-RCM model, scenario,
     year)** -- confirms handoff notes §8 open item on chunking.
   - Grid/CRS: KliNoGrid/seNorge, UTM33N (EPSG:25833) unless a file's own
     `grid_mapping` says otherwise (read that first; see `get_grid_crs()` in
-    `build_weight_matrix.py`).
+    `build_weight_matrix.py`). On the real archive the `grid_mapping`
+    variable is named `projection_utm`; parsing it via `pyproj`'s
+    `CRS.from_cf()` has been observed to log a benign PROJ debug message
+    ("several objects matching this name...Greenwich") -- didn't block
+    execution in testing, but not yet double-checked that the resolved CRS
+    is bit-exact EPSG:25833 vs. a numerically-equivalent alternate
+    definition; revisit if downstream areas/volumes look subtly off.
 - `fileServer` (bulk download, used by `download_mrro_full_archive.sh` to
   stage the raw archive onto NIRD) vs. `dodsC`/OPeNDAP (used by the Layer 1
   pipeline scripts below to read only the sliced region needed, without

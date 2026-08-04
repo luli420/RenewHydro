@@ -99,32 +99,53 @@ def find_sample_file(archive_dir: Path, method: str | None, scenario: str | None
     return found_method, found_scenario, found_model, path
 
 
-def find_grid_window(ds: xr.Dataset, basin_geom_grid_crs, buffer_cells: int = GRID_INDEX_BUFFER_CELLS) -> tuple[slice, slice]:
-    """Locate the Yc/Xc index window (+ buffer) covering the basin's bounds,
-    from the sample file's projected X/Y coordinate variables."""
+def find_grid_window(ds: xr.Dataset, basin_geom_wgs84, crs, buffer_cells: int = GRID_INDEX_BUFFER_CELLS) -> tuple[slice, slice]:
+    """Locate the Yc/Xc index window (+ buffer) covering the basin's bounds.
+
+    Prefers the file's own projected X/Y coordinate variables if present.
+    Otherwise -- the layout CONFIRMED on the real archive on Olivia: only
+    Xc/Yc index dims plus 2D lon/lat auxiliary coordinates, no projected
+    X/Y -- masks directly on lon/lat against the basin's bounds in WGS84."""
+    ny_full = ds.sizes["Yc"]
+    nx_full = ds.sizes["Xc"]
+
     x_name = next((n for n in ("X", "x") if n in ds.variables), None)
     y_name = next((n for n in ("Y", "y") if n in ds.variables), None)
-    if x_name is None or y_name is None:
-        raise KeyError(
-            "Could not find projected X/Y coordinate variables ('X'/'Y' or 'x'/'y') in the "
-            f"sample file needed to locate the basin on the grid. Available variables: {list(ds.variables)}"
-        )
-    x = ds[x_name].values
-    y = ds[y_name].values
-    x1d = x[0, :] if x.ndim == 2 else x
-    y1d = y[:, 0] if y.ndim == 2 else y
+    if x_name is not None and y_name is not None:
+        x = ds[x_name].values
+        y = ds[y_name].values
+        x1d = x[0, :] if x.ndim == 2 else x
+        y1d = y[:, 0] if y.ndim == 2 else y
+        minx, miny, maxx, maxy = gpd.GeoSeries([basin_geom_wgs84], crs="EPSG:4326").to_crs(crs).iloc[0].bounds
+        xc_idx = np.where((x1d >= minx) & (x1d <= maxx))[0]
+        yc_idx = np.where((y1d >= miny) & (y1d <= maxy))[0]
+    else:
+        lat_name = next((n for n in ("lat", "latitude") if n in ds.variables), None)
+        lon_name = next((n for n in ("lon", "longitude") if n in ds.variables), None)
+        if lat_name is None or lon_name is None:
+            raise KeyError(
+                "Could not find projected X/Y or 2D lon/lat coordinate variables in the "
+                f"sample file needed to locate the basin on the grid. Available variables: {list(ds.variables)}"
+            )
+        lat = ds[lat_name].values
+        lon = ds[lon_name].values
+        minx, miny, maxx, maxy = basin_geom_wgs84.bounds
+        mask = (lat >= miny) & (lat <= maxy) & (lon >= minx) & (lon <= maxx)
+        if not mask.any():
+            raise ValueError(
+                "Basin bounding box does not overlap the grid's lon/lat coordinates -- "
+                "check the basin shapefile's CRS/extent against the sample file."
+            )
+        yc_idx, xc_idx = np.where(mask)
 
-    minx, miny, maxx, maxy = basin_geom_grid_crs.bounds
-    xc_idx = np.where((x1d >= minx) & (x1d <= maxx))[0]
-    yc_idx = np.where((y1d >= miny) & (y1d <= maxy))[0]
     if xc_idx.size == 0 or yc_idx.size == 0:
         raise ValueError(
-            "Basin bounding box does not overlap the grid's X/Y coordinates -- "
+            "Basin bounding box does not overlap the grid -- "
             "check the basin shapefile's CRS/extent against the sample file."
         )
 
-    xc_slice = slice(max(int(xc_idx.min()) - buffer_cells, 0), min(int(xc_idx.max()) + 1 + buffer_cells, x1d.size))
-    yc_slice = slice(max(int(yc_idx.min()) - buffer_cells, 0), min(int(yc_idx.max()) + 1 + buffer_cells, y1d.size))
+    xc_slice = slice(max(int(xc_idx.min()) - buffer_cells, 0), min(int(xc_idx.max()) + 1 + buffer_cells, nx_full))
+    yc_slice = slice(max(int(yc_idx.min()) - buffer_cells, 0), min(int(yc_idx.max()) + 1 + buffer_cells, ny_full))
     logger.info("Grid window: Yc %s, Xc %s (%d x %d cells)", yc_slice, xc_slice, yc_slice.stop - yc_slice.start, xc_slice.stop - xc_slice.start)
     return yc_slice, xc_slice
 
@@ -134,10 +155,11 @@ def build_local_weights(basin_gdf: gpd.GeoDataFrame, sample_path: Path, buffer_c
     var = "mrro"
     crs = get_grid_crs(ds, var)
     basin_proj = basin_gdf if basin_gdf.crs == crs else basin_gdf.to_crs(crs)
+    basin_wgs84 = basin_gdf.to_crs("EPSG:4326")
 
-    combined_geom = basin_proj.geometry.union_all() if hasattr(basin_proj.geometry, "union_all") else basin_proj.unary_union
-    yc_slice, xc_slice = find_grid_window(ds, combined_geom, buffer_cells)
-    transform = get_transform(ds, yc_slice, xc_slice)
+    combined_geom_wgs84 = basin_wgs84.geometry.union_all() if hasattr(basin_wgs84.geometry, "union_all") else basin_wgs84.unary_union
+    yc_slice, xc_slice = find_grid_window(ds, combined_geom_wgs84, crs, buffer_cells)
+    transform = get_transform(ds, yc_slice, xc_slice, crs)
     shape = (yc_slice.stop - yc_slice.start, xc_slice.stop - xc_slice.start)
 
     W, coverage_method = build_weight_matrix(basin_proj, shape, transform, crs)

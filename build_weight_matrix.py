@@ -48,7 +48,7 @@ import numpy as np
 import scipy.sparse as sp
 import xarray as xr
 from affine import Affine
-from pyproj import CRS
+from pyproj import CRS, Transformer
 
 from kin2025_config import OPENDAP_BASE, build_url
 
@@ -68,27 +68,46 @@ def get_grid_crs(ds: xr.Dataset, var_name: str) -> CRS:
     return CRS.from_user_input(GRID_CRS_FALLBACK)
 
 
-def get_transform(ds: xr.Dataset, yc_slice: slice, xc_slice: slice) -> Affine:
+def get_transform(ds: xr.Dataset, yc_slice: slice, xc_slice: slice, crs: CRS) -> Affine:
     """Build an affine transform (grid-index -> projected meters) for the
-    sliced region, from the file's projected X/Y coordinate variables."""
+    sliced region.
+
+    Prefers the file's own projected X/Y coordinate variables if present.
+    Otherwise -- the layout CONFIRMED on the real archive on Olivia: only
+    Xc/Yc index dims plus 2D lon/lat auxiliary coordinates in degrees, no
+    projected X/Y -- derive it by reprojecting the sliced lon/lat window
+    into `crs` and reading off the (regular UTM grid) spacing."""
     x_name = next((n for n in ("X", "x") if n in ds.variables), None)
     y_name = next((n for n in ("Y", "y") if n in ds.variables), None)
-    if x_name is None or y_name is None:
+    if x_name is not None and y_name is not None:
+        x = ds[x_name].values
+        y = ds[y_name].values
+        if x.ndim == 2:  # some seNorge files carry X/Y as 2D fields matching (Yc, Xc)
+            x = x[0, xc_slice]
+            y = y[yc_slice, 0]
+        else:
+            x = x[xc_slice]
+            y = y[yc_slice]
+        res_x = float(np.median(np.diff(x)))
+        res_y = float(np.median(np.diff(y)))
+        return Affine.translation(x[0] - res_x / 2, y[0] - res_y / 2) * Affine.scale(res_x, res_y)
+
+    lat_name = next((n for n in ("lat", "latitude") if n in ds.variables), None)
+    lon_name = next((n for n in ("lon", "longitude") if n in ds.variables), None)
+    if lat_name is None or lon_name is None:
         raise KeyError(
-            "Could not find projected X/Y coordinate variables ('X'/'Y' or 'x'/'y') "
-            f"needed to build an affine transform. Available variables: {list(ds.variables)}"
+            "Could not find projected X/Y or 2D lon/lat coordinate variables needed to "
+            f"build an affine transform. Available variables: {list(ds.variables)}"
         )
-    x = ds[x_name].values
-    y = ds[y_name].values
-    if x.ndim == 2:  # some seNorge files carry X/Y as 2D fields matching (Yc, Xc)
-        x = x[0, xc_slice]
-        y = y[yc_slice, 0]
-    else:
-        x = x[xc_slice]
-        y = y[yc_slice]
-    res_x = float(np.median(np.diff(x)))
-    res_y = float(np.median(np.diff(y)))
-    return Affine.translation(x[0] - res_x / 2, y[0] - res_y / 2) * Affine.scale(res_x, res_y)
+    lat = ds[lat_name].values[yc_slice, xc_slice]
+    lon = ds[lon_name].values[yc_slice, xc_slice]
+    transformer = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+    x_proj, y_proj = transformer.transform(lon, lat)
+    x1d = x_proj[0, :]
+    y1d = y_proj[:, 0]
+    res_x = float(np.median(np.diff(x1d)))
+    res_y = float(np.median(np.diff(y1d)))
+    return Affine.translation(x1d[0] - res_x / 2, y1d[0] - res_y / 2) * Affine.scale(res_x, res_y)
 
 
 def open_sample_grid(
@@ -98,8 +117,8 @@ def open_sample_grid(
     logger.info("Opening sample grid %s", url)
     ds = xr.open_dataset(url)
     var = "mrro"
-    transform = get_transform(ds, yc_slice, xc_slice)
     crs = get_grid_crs(ds, var)
+    transform = get_transform(ds, yc_slice, xc_slice, crs)
     shape = (yc_slice.stop - yc_slice.start, xc_slice.stop - xc_slice.start)
     return transform, crs, shape
 
