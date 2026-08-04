@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 """
+DEPRECATED: superseded by the delfelt-based pipeline (fetch_nve_subcatchments.py
+-> build_weight_matrix.py -> extract_layer1_timeseries.py -> merge_layer1_outputs.py
+-> mrro_to_gwh.py). Kept for reference only; not part of the active pipeline.
+See CLAUDE.md "History" for why (NVE's own oppstromDelfeltListe topology replaces
+the containment-differencing this script does, and the OPeNDAP path this script
+guesses at is now confirmed to be the DailyTimeSeries/mrro path used elsewhere).
+
 Extract projected runoff (mrro) for Evanger hydropower subcatchments from the
 NCCS "Klima i Norge 2025" (KiN2025) dataset (Dyrrdal et al. 2025, NVE + MET
 Norway), served as gridded NetCDF-CF on thredds.met.no.

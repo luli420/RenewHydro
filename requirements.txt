@@ -1,4 +1,4 @@
-# Evanger runoff extraction — Python dependencies
+# KiN2025 runoff -> GWh pipeline — Python dependencies
 # Tested against Python 3.10+ (matches the `evanger` conda env on Olivia)
 
 xarray>=2024.1.0
@@ -11,3 +11,9 @@ pandas>=2.1.0
 numpy>=1.26.0
 pyproj>=3.6.0
 shapely>=2.0.0
+affine>=2.4.0
+rasterio>=1.3.0      # supersampled-rasterize fallback in build_weight_matrix.py
+scipy>=1.11.0         # sparse weight matrix (build_weight_matrix.py, extract_layer1_timeseries.py)
+requests>=2.31.0      # NVE ArcGIS REST + Powerplant API (fetch_nve_subcatchments.py, energy_equivalents.py)
+zarr>=2.16.0          # Layer 1 merged store (merge_layer1_outputs.py)
+dask>=2024.1.0        # chunked I/O for Zarr read/write at scale

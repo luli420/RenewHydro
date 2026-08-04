@@ -1,7 +1,17 @@
-# Data (fetched via OPeNDAP / delineated in NEVINA -- not committed)
+# Data (fetched via OPeNDAP / NVE APIs -- not committed)
 *.nc
+*.nc4
 *.gpkg
+*.zarr/
+*.npz
 output/
+layer1/
+gwh/
+weights/
+logs/
+member_manifest.csv
+delfelt_energy_equivalents.csv
+validation_*.csv
 
 # Python
 __pycache__/
