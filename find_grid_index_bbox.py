@@ -5,7 +5,7 @@ seNorge grid, by opening one sample file over OPeNDAP and searching its 2D
 lat/lon auxiliary coordinates.
 
 Why: the archive is indexed by Xc/Yc (grid cell index), not lon/lat or a
-projected x/y -- see download_mrro_VN_sKlimaiNorge2025.py, which already
+projected x/y -- see download_mrro_vestlandet_subset.py, which already
 hardcodes a Vestlandet slice (Xc 45:175, Yc 1165:1290). Handoff notes §8
 flag that the region must be re-derived/extended to also cover Driva
 (Oppdal, central Norway) -- this script operationalizes that check instead

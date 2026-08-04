@@ -4,9 +4,9 @@ Shared configuration for the KiN2025 mrro pipeline: OPeNDAP location, the
 and scenario/year coverage.
 
 Values here are confirmed against the live THREDDS catalog (used
-successfully by download_mrro_KlimaiNorge.sh and
-download_mrro_VN_sKlimaiNorge2025.py) -- unlike the OPeNDAP paths in the
-older extract_evanger_runoff.py (NEVINA-based, superseded), which were
+successfully by download_mrro_full_archive.sh and
+download_mrro_vestlandet_subset.py) -- unlike the OPeNDAP paths in
+legacy/nevina_runoff_v1.py (NEVINA-based, superseded), which were
 unverified guesses. See CLAUDE.md.
 """
 

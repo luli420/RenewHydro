@@ -35,7 +35,7 @@ set -euo pipefail
 # --- paths: adjust to your NIRD project area, not $HOME ---
 PROJECT_DIR="/nird/datapeak/NS10014K/WP6/luli/Klima_i_Norge_2025"
 REPO_DIR="${PROJECT_DIR}/RenewHydro"
-ARCHIVE_LOCAL_DIR="${PROJECT_DIR}/mrro"          # only if download_mrro_KlimaiNorge.sh already ran; else drop --local-dir below
+ARCHIVE_LOCAL_DIR="${PROJECT_DIR}/mrro"          # only if download_mrro_full_archive.sh already ran; else drop --local-dir below
 WEIGHTS="${PROJECT_DIR}/weights/delfelt_weights.npz"
 OUT_DIR="${PROJECT_DIR}/layer1"
 MANIFEST="${REPO_DIR}/member_manifest.csv"       # scenario,method,model -- generate once, see note below

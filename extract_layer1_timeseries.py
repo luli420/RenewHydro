@@ -11,12 +11,12 @@ This is the unit of work for one SLURM array task (see run_layer1_array.sh)
 (scenario, member) combinations in the archive, touching each source file
 exactly once.
 
-Optionally also caches the regional gridded subset (Layer 2, handoff §3)
-in the same pass with --write-grid-cache, so the archive genuinely only
-gets read once.
+A Layer 2 gridded cache-write (handoff §3) could be added into this same
+per-year loop later, so the archive genuinely only gets read once -- not
+implemented yet, see CLAUDE.md.
 
 Reads from a local directory (if the archive was already pulled to NIRD via
-download_mrro_KlimaiNorge.sh -- pass --local-dir) or straight over OPeNDAP
+download_mrro_full_archive.sh -- pass --local-dir) or straight over OPeNDAP
 otherwise.
 
 Usage:
@@ -140,7 +140,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", required=True)
     parser.add_argument("--scenario", required=True, choices=["hist", "rcp26", "rcp45", "ssp370"])
     parser.add_argument("--weights", type=Path, required=True, help="Path to weights .npz from build_weight_matrix.py")
-    parser.add_argument("--local-dir", type=Path, default=None, help="Local archive root (as populated by download_mrro_KlimaiNorge.sh); omit to read over OPeNDAP")
+    parser.add_argument("--local-dir", type=Path, default=None, help="Local archive root (as populated by download_mrro_full_archive.sh); omit to read over OPeNDAP")
     parser.add_argument("--opendap-base", default=OPENDAP_BASE)
     parser.add_argument("--out-dir", type=Path, default=Path("layer1"))
     parser.add_argument("-v", "--verbose", action="store_true")

@@ -24,9 +24,9 @@ must be extended to cover it (see "Region bounding box" below).
   **confirm the units attribute on the actual file**, don't just assume).
   Dyrrdal et al. 2025, NVE + MET Norway, served on `thredds.met.no`.
 - **Confirmed OPeNDAP base and dims** (used successfully by
-  `download_mrro_KlimaiNorge.sh` and `download_mrro_VN_sKlimaiNorge2025.py`
+  `download_mrro_full_archive.sh` and `download_mrro_vestlandet_subset.py`
   -- these are no longer guesses, unlike the old `ReferenceIndices`/
-  `ClimateStatistics` paths in the deprecated NEVINA-era script):
+  `ClimateStatistics` paths in `legacy/nevina_runoff_v1.py`):
   ```
   https://thredds.met.no/thredds/dodsC/KSS/Klima_i_Norge/utgave2025/DailyTimeSeries/mrro/<method>/<scenario>/<model>/<model>_<scenario>_<method>-estobs_disthbv_norway_1km_mrro_daily_<year>.nc4
   ```
@@ -39,7 +39,7 @@ must be extended to cover it (see "Region bounding box" below).
   - Grid/CRS: KliNoGrid/seNorge, UTM33N (EPSG:25833) unless a file's own
     `grid_mapping` says otherwise (read that first; see `get_grid_crs()` in
     `build_weight_matrix.py`).
-- `fileServer` (bulk download, used by `download_mrro_KlimaiNorge.sh` to
+- `fileServer` (bulk download, used by `download_mrro_full_archive.sh` to
   stage the raw archive onto NIRD) vs. `dodsC`/OPeNDAP (used by the Layer 1
   pipeline scripts below to read only the sliced region needed, without
   downloading full-Norway grids) -- both are legitimate depending on
@@ -204,7 +204,7 @@ Bulken has an Evanger intake dam:
   `git pull`.
 - **NIRD** (`/nird/datapeak/NS10014K/WP6/luli/Klima_i_Norge_2025/`) is the
   project storage area for the staged archive
-  (`download_mrro_KlimaiNorge.sh`), weight matrices, and Layer 1/2 outputs
+  (`download_mrro_full_archive.sh`), weight matrices, and Layer 1/2 outputs
   -- write there, not `$HOME`. **Check the project quota before staging
   the full archive**: ~350 GB/member uncompressed, multi-TB across all
   scenario-member combinations.
@@ -281,7 +281,7 @@ Only then submit the full `run_layer1_array.sh` array.
 - Long-format / dimensioned outputs over wide tables, so downstream
   analysis doesn't need to know the scenario/period list in advance.
 
-## Single-basin quick extraction (extract_evanger_runoff.py)
+## Single-basin quick extraction (extract_basin_runoff.py)
 
 For a one-off basin with its own shapefile (not NVE's delfelt layer) and an
 archive already staged locally -- e.g. testing against Evangervatn on
@@ -289,7 +289,7 @@ Olivia at `/cluster/work/projects/nn10014k/luli/kin2025` with the basin
 polygon at `/cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp`:
 
 ```
-python extract_evanger_runoff.py \
+python extract_basin_runoff.py \
     --catchments /cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp \
     --basin-name Evangervatn \
     --archive-dir /cluster/work/projects/nn10014k/luli/kin2025 \
@@ -319,11 +319,11 @@ polygon-containment differencing, reading `ReferenceIndices`/
 `ClimateStatistics` OPeNDAP paths that were unverified guesses. That
 approach is superseded by the delfelt-based Layer 1 pipeline above (NVE's
 own `oppstromDelfeltListe` topology makes the containment-differencing step
-unnecessary for the many-basin case) -- `extract_evanger_runoff.py` itself
+unnecessary for the many-basin case) -- `extract_basin_runoff.py` itself
 has since been rewritten (see "Single-basin quick extraction" above) rather
-than kept as dead code. A frozen copy of the original NEVINA-era version
-was saved by request, first as `Evanger_runoff_analysis.py` and later
-renamed to **`extract_basin_runoff.py`**; it is not part of the active
-pipeline and duplicates none of the fixes made since. Mind the similar
-name to `extract_evanger_runoff.py` (the current, active single-basin
-script, unrelated NEVINA-era logic despite the name overlap).
+than kept as dead code. A frozen copy of the original NEVINA-era version is
+kept at **`legacy/nevina_runoff_v1.py`** for historical reference (renamed
+there from its original filename, `extract_evanger_runoff.py`, to keep
+"current active code" and "historical reference" from sharing a
+directory); it is not part of the active pipeline and duplicates none of
+the fixes made since.
