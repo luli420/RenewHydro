@@ -227,26 +227,74 @@ Bulken has an Evanger intake dam:
 
 Only then submit the full `run_layer1_array.sh` array.
 
-## Analyses to build on Layer 1 (not yet implemented, roughly in priority order)
+## Analyses to build on Layer 1 (roughly in priority order)
 
-1. Everything in GWh (done: `mrro_to_gwh.py`).
-2. Seasonal redistribution -- monthly climatology with ensemble bands,
-   centre-of-volume date, Oct-Mar share of annual inflow, spring flood
-   magnitude/duration.
-3. Reservoir-constrained production -- bucket model with reservoir volume
-   `V` and max turbine discharge `Qmax`; spilled energy, days above `Qmax`,
-   firm energy (90% exceedance).
-4. Dry-year and multi-year deficit risk -- 1-in-10/1-in-20 driest years,
-   consecutive dry-year runs, change in interannual CV.
-5. Extremes -- annual max 1-/3-day inflow with GEV return levels (dam
-   safety); summer 7-day minimum and days below minstevannforing.
-6. Uncertainty decomposition -- variance across scenario/GCM-RCM/
-   bias-adjustment using the 10x2 design; time of emergence.
+By explicit request, items 2-6 are implemented in FLOW terms first (mm/day,
+m3/s, Mm3), each as its own `analysis_*.py` script with its own figure(s)
+and summary CSV, so results can be sanity-checked before energy conversion
+is layered on top. `mrro_to_gwh.py` (item 1) already does the conversion
+itself; wiring GWh into the analysis scripts is a deliberate later step,
+not done yet.
+
+1. Everything in GWh (done: `mrro_to_gwh.py`; not yet wired into items 2-6).
+2. **Seasonal redistribution** -- `analysis_seasonal_redistribution.py`:
+   monthly climatology with ensemble bands, centre-of-volume date, Oct-Mar
+   share of annual inflow, spring flood magnitude/duration.
+3. **Reservoir-constrained flow** -- `analysis_reservoir_constrained.py`:
+   daily bucket model with reservoir volume `V` (`--capacity-mm3`) and max
+   turbine discharge `Qmax` (`--qmax-m3s`, both plant-specific, not
+   guessed); spilled volume, days above `Qmax`, filling degree at end of
+   filling season, firm flow (Q90).
+4. **Dry-year and multi-year deficit risk** -- `analysis_dry_year_risk.py`:
+   1-in-10/1-in-20 driest years, consecutive dry-year runs against a fixed
+   Reference-period threshold, change in interannual CV.
+5. **Extremes** -- `analysis_extremes.py`: annual max 1-/3-day inflow with
+   GEV return levels + bootstrap CI (dam safety); summer 7-day minimum and
+   days below a minstevannforing threshold (`--min-flow-m3s`, not guessed).
+6. **Uncertainty decomposition** -- `analysis_uncertainty_decomposition.py`:
+   variance across scenario / GCM-RCM+method / interannual variability
+   (simplified Hawkins & Sutton-style cascade, not a full orthogonal
+   ANOVA); time of emergence vs. the Reference-period band.
 7. Baseline credibility -- if residual bias remains after step 6's
    validation, apply results as delta-change factors on the company's
-   observed inflow series rather than absolutes.
+   observed inflow series rather than absolutes. Not yet implemented.
 8. Portfolio view (if multiple plants) -- cross-basin correlation of
-   annual inflow, erosion of geographic diversification in dry years.
+   annual inflow, erosion of geographic diversification in dry years. Not
+   yet implemented.
+
+### Flow analysis scripts (items 2-6) -- shared conventions
+
+- Input: the long-format CSV from `extract_basin_runoff.py`
+  (`basin, scenario, model, method, date, mrro_mm`) via `--runoff-csv`
+  (`--basin NAME` to filter if the CSV holds more than one).
+- Period convention (`runoff_analysis_common.py`): **Reference**
+  (`hist`, 1991-2020), **Near-future** (2041-2070), **Far-future**
+  (2071-2100), evaluated within whichever future scenario is present in
+  the CSV -- matches the diff-mrro periods used elsewhere in this project.
+- Figures: `plot_style.py` provides shared journal-figure conventions --
+  single/double-column widths, embedded editable vector text
+  (`pdf.fonttype`/`ps.fonttype` 42) for PDF export alongside a 300 dpi PNG,
+  panel labels via `ax.set_title(loc="left")` (a dedicated layout slot, so
+  it can't collide with a long/rotated y-axis label the way a manually
+  positioned `ax.text` can), and a fixed-order colorblind-safe Okabe & Ito
+  (2008) palette assigned by identity (`PERIOD_COLORS`/`SCENARIO_COLORS`),
+  never by rank.
+- Every script also writes a summary CSV of the underlying per-period
+  statistics next to its figure.
+- Caveat carried through every script's docstring: the 20 ensemble members
+  are 10 GCM-RCM pairs x 2 bias-adjustment methods, not fully independent
+  -- confidence bands/decompositions that pool across members (GEV
+  bootstrap in `analysis_extremes.py`, the uncertainty cascade in
+  `analysis_uncertainty_decomposition.py`) should be read as indicative,
+  not rigorous i.i.d. intervals.
+- All 5 scripts' core numeric functions (containment/topology aside) were
+  verified against a synthetic archive with a known seasonal cycle,
+  warming trend, and dry-year injections in this session -- e.g. the
+  reservoir bucket model's spilled volume and the GEV return levels moved
+  in the expected direction under the injected trend, and the uncertainty
+  decomposition correctly attributed ~0% of variance to "scenario" when
+  only one future scenario was present in the test data. Real KiN2025
+  output has not been run through them yet.
 
 ## Open items / next steps
 
