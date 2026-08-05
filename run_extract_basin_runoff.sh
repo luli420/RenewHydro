@@ -23,7 +23,7 @@
 
 #SBATCH --job-name=evangervatn-runoff
 #SBATCH --account=NS10014K
-#SBATCH --partition=normal          # CPU partition only -- this script is single-threaded, no GPU benefit
+#SBATCH --partition=small           # CPU partition (confirmed via `sinfo` on Olivia: small/large/accel; accel is GPU)
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
