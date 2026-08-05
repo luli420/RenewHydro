@@ -19,7 +19,7 @@
 #   sbatch run_layer1_array.sh
 
 #SBATCH --job-name=kin2025-layer1
-#SBATCH --account=NS10014K
+#SBATCH --account=nn10014k
 #SBATCH --partition=small           # CPU partition (confirmed via `sinfo` on Olivia: small/large/accel; accel is GPU) -- use `large` instead if a task needs more memory/cores than `small` allows
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

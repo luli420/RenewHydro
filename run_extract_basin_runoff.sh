@@ -22,7 +22,7 @@
 # (check with `sacctmgr show associations user=$USER` or similar).
 
 #SBATCH --job-name=evangervatn-runoff
-#SBATCH --account=NS10014K
+#SBATCH --account=nn10014k
 #SBATCH --partition=small           # CPU partition (confirmed via `sinfo` on Olivia: small/large/accel; accel is GPU)
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
