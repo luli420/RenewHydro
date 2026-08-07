@@ -49,7 +49,11 @@ MODELS=""      # empty -> all models
 mkdir -p "${REPO_DIR}/logs" "${OUT_DIR}"
 cd "${REPO_DIR}"
 
-conda activate evanger   # adjust to your actual env name/activation method if different
+# Load conda and activate the analysis environment.
+# TODO: verify the exact Miniconda/Anaconda module name+version available on Olivia (e.g. `module avail conda`) and adjust below if needed.
+module load Miniconda3/23.10.0-py310  # placeholder module name/version -- confirm on Olivia
+source "${EBROOTMINICONDA3}/etc/profile.d/conda.sh"
+conda activate evanger  # adjust to your actual env name/activation method if different
 
 EXTRA_ARGS=()
 [[ -n "${SCENARIOS}" ]] && EXTRA_ARGS+=(--scenarios ${SCENARIOS})
