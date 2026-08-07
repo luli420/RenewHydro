@@ -20,7 +20,7 @@
 
 #SBATCH --job-name=kin2025-layer1
 #SBATCH --account=nn10014k
-#SBATCH --partition=small           # CPU partition (confirmed via `sinfo` on Olivia: small/large/accel; accel is GPU) -- use `large` instead if a task needs more memory/cores than `small` allows
+#SBATCH --partition=normal          # CPU partition only -- GPU partition adds queue time for no benefit here
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4

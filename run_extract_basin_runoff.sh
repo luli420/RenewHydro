@@ -21,9 +21,8 @@
 # code) -- replace with your actual Olivia SLURM account if different
 # (check with `sacctmgr show associations user=$USER` or similar).
 
-#SBATCH --job-name=evangervatn-runoff
+#SBATCH --job-name=basin_runoff
 #SBATCH --account=nn10014k
-#SBATCH --partition=small           # CPU partition (confirmed via `sinfo` on Olivia: small/large/accel; accel is GPU)
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
