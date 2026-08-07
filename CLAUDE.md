@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # RenewHydro — KiN2025 runoff -> GWh pipeline
 
 Context for whoever (human or Claude Code) picks this project up next.
@@ -16,6 +20,93 @@ Case studies: **Evanger** (Bulken, Mestad, Mertesgrova), Voss/Vaksdal,
 western Norway -- primary. **Driva** (Oppdal), central Norway -- possible
 second site. Driva is NOT in western Norway, so any spatial subsetting
 must be extended to cover it (see "Region bounding box" below).
+
+## Commands
+
+There is no build step, no package (`requirements.txt` only, no
+`pyproject.toml`/`setup.py`), and no committed test suite, linter config, or
+CI. Every module is a standalone CLI script run with `python <script>.py`
+from the repo root, sharing an identical shape: `parse_args(argv)` ->
+`main(argv)` -> `if __name__ == "__main__"`, `-v/--verbose` switching
+logging to DEBUG, `pathlib.Path` for every path argument. Follow that shape
+when adding a script.
+
+```bash
+pip install -r requirements.txt          # or: conda activate evanger (on Olivia)
+python <script>.py --help                # every script self-documents its flags
+```
+
+### Pipeline order (Layer 1, the many-basin path)
+
+Each step's output is the next step's input; steps 1-3 run once, step 4 runs
+per (scenario, member).
+
+```bash
+# 1. delfelt polygons  -> delfelt_subcatchments.gpkg   (needs NVE network access)
+python fetch_nve_subcatchments.py --bbox 4.0 58.5 12.5 64.0 --out delfelt_subcatchments.gpkg -v
+
+# 2. lon/lat box -> the Yc/Xc index slice every later step needs
+python find_grid_index_bbox.py --lon-min 4.0 --lat-min 58.5 --lon-max 12.5 --lat-max 64.0 -v
+
+# 3. sparse coverage weights (delfelt x grid cell) -- computed ONCE, reused for every year
+python build_weight_matrix.py --catchments delfelt_subcatchments.gpkg \
+    --yc-slice <START> <STOP> --xc-slice <START> <STOP> --out weights/delfelt_weights.npz -v
+
+# 4. one member (drop --local-dir to read over OPeNDAP instead of staged files)
+python extract_layer1_timeseries.py --method eqm --model cnrm-r1i1p1-aladin --scenario hist \
+    --weights weights/delfelt_weights.npz --local-dir <archive>/mrro --out-dir layer1 -v
+
+# 5. merge per-member files -> (delfelt, time, member, scenario) Zarr store
+python merge_layer1_outputs.py --layer1-dir layer1 --out layer1_merged.zarr -v
+
+# 6. energy equivalents, then GWh + the free validation cross-check
+python energy_equivalents.py --catchments delfelt_subcatchments.gpkg --out delfelt_energy_equivalents.csv -v
+python mrro_to_gwh.py --layer1 layer1_merged.zarr --catchments delfelt_subcatchments.gpkg \
+    --energy-equivalents delfelt_energy_equivalents.csv \
+    --basin Bulken:<OUTLET_DELFELTNR> --validate -v
+```
+
+### Single-basin quick path (own shapefile, local archive)
+
+Bypasses steps 1-5 entirely — see "Single-basin quick extraction" below for
+the full Evangervatn invocation and what it reuses.
+
+### Flow analyses (items 2-6)
+
+All five consume the same long-format CSV from `extract_basin_runoff.py` and
+write a figure (PNG + PDF) plus a summary CSV to `--out-dir`. `--area-km2` is
+required by all but `analysis_seasonal_redistribution.py`; the
+plant-specific numbers (`--capacity-mm3`, `--qmax-m3s`, `--min-flow-m3s`) are
+required with no defaults, deliberately — do not invent values.
+
+```bash
+python analysis_seasonal_redistribution.py  --runoff-csv <csv> --out-dir figs -v
+python analysis_dry_year_risk.py            --runoff-csv <csv> --area-km2 <A> --out-dir figs -v
+python analysis_uncertainty_decomposition.py --runoff-csv <csv> --area-km2 <A> --out-dir figs -v
+python analysis_reservoir_constrained.py    --runoff-csv <csv> --area-km2 <A> --capacity-mm3 <V> --qmax-m3s <Q> --out-dir figs -v
+python analysis_extremes.py                 --runoff-csv <csv> --area-km2 <A> --min-flow-m3s <Q> --out-dir figs -v
+```
+
+### SLURM (Olivia)
+
+```bash
+sbatch run_layer1_array.sh            # array, one task per (scenario, member); needs member_manifest.csv
+sbatch run_extract_basin_runoff.sh    # single serial job, loops all combos internally (Evangervatn)
+```
+
+`member_manifest.csv` is generated once outside the array from
+`kin2025_config.scenario_member_combos()` — the snippet is commented inside
+`run_layer1_array.sh`. Both scripts use `--account=nn10014k` and
+`--partition=small` (`sinfo` on Olivia shows `small`/`large`/`accel`;
+`accel` is GPU — never use it here).
+
+### On testing
+
+**No tests are committed to this repo.** Claims elsewhere in this file that
+something was "unit-tested" or "verified against synthetic data" refer to
+throwaway checks run in earlier sessions that were never persisted — they
+are not reproducible from a clean clone, and should be re-established rather
+than trusted. If you add tests, `pytest` is not currently a dependency.
 
 ## Data source
 
@@ -220,15 +311,26 @@ Bulken has an Evanger intake dam:
   thousands of small files and hostile to the parallel filesystem), run
   the pipeline there. No automated push-to-HPC CI -- syncing is a manual
   `git pull`.
-- **NIRD** (`/nird/datapeak/NS10014K/WP6/luli/Klima_i_Norge_2025/`) is the
-  project storage area for the staged archive
-  (`download_mrro_full_archive.sh`), weight matrices, and Layer 1/2 outputs
-  -- write there, not `$HOME`. **Check the project quota before staging
+- **Two storage roots are in play and the scripts disagree** -- check which
+  one you actually want before copying paths:
+  - **NIRD** `/nird/datapeak/NS10014K/WP6/luli/Klima_i_Norge_2025/` --
+    hardcoded in `download_mrro_full_archive.sh` and `run_layer1_array.sh`;
+    the project storage area for the staged archive, weight matrices, and
+    Layer 1/2 outputs.
+  - **Olivia work area** `/cluster/work/projects/nn10014k/luli/` --
+    hardcoded in `run_extract_basin_runoff.sh`, and where the archive was
+    actually found during the 2026-08 session (`.../kin2025/mrro`).
+
+  Write to either, not `$HOME`. **Check the project quota before staging
   the full archive**: ~350 GB/member uncompressed, multi-TB across all
   scenario-member combinations.
 - SLURM: embarrassingly parallel, one array task per (scenario, member)
-  (`run_layer1_array.sh`), **CPU partition only** (the Grace Hopper GPU
-  partition adds queue time for no benefit here).
+  (`run_layer1_array.sh`), **CPU partition only** (`accel` is the Grace
+  Hopper GPU partition -- queue time for no benefit here). The single-basin
+  path has its own non-array job, `run_extract_basin_runoff.sh`. Neither
+  script's `--time`/`--mem` has been tuned against a real measurement;
+  extrapolate from the per-year INFO timestamps of a small test run before
+  trusting them.
 
 ## Test sequence before the full run (handoff notes §6)
 
@@ -346,6 +448,34 @@ not done yet.
   dimension appears -- the 20 members are paired, not independent.
 - Long-format / dimensioned outputs over wide tables, so downstream
   analysis doesn't need to know the scenario/period list in advance.
+- Four modules are shared infrastructure, imported rather than duplicated --
+  reach for these before writing new code:
+  - `kin2025_config.py` -- the single source of truth for OPeNDAP/fileServer
+    bases, the model/method/scenario lists, HadGEM's 2098 truncation, and
+    URL/year construction (`build_url()`, `years_for()`,
+    `scenario_member_combos()`). Never hardcode a model list or a filename
+    pattern anywhere else. Note `download_mrro_full_archive.sh` duplicates
+    these lists in Bash; keep the two in sync if either changes.
+  - `runoff_analysis_common.py` -- CSV loading, the Reference /
+    Near-future / Far-future period assignment, and the mm/day ->
+    m3/s / Mm3 unit conversions used by all five `analysis_*.py` scripts.
+  - `plot_style.py` -- journal figure conventions; call
+    `apply_journal_style()` then `new_figure()`/`save_figure()` rather than
+    touching `matplotlib.rcParams` directly.
+  - `build_weight_matrix.py` -- `get_grid_crs()`, `get_transform()`, and the
+    exactextract/supersample coverage pair are imported by
+    `extract_basin_runoff.py`; geometry handling lives here only.
+- Geometry and I/O stay separated: weights are computed once from polygons,
+  then every read is a `W @ R.T` matmul. Never re-touch geometry inside a
+  per-year or per-member loop.
+- Physical parameters that belong to a specific plant (reservoir capacity,
+  `Qmax`, minstevannforing) are required CLI arguments with no defaults, on
+  purpose. Keep it that way -- a plausible-looking default is worse than a
+  crash here.
+- Comments and docstrings carry provenance: they state whether a fact was
+  confirmed against the real archive/API or is still a guess. Preserve that
+  distinction when editing, and downgrade a claim rather than delete it if
+  it turns out to be unverified.
 
 ## Single-basin quick extraction (extract_basin_runoff.py)
 
@@ -358,7 +488,7 @@ polygon at `/cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF
 python extract_basin_runoff.py \
     --catchments /cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp \
     --basin-name Evangervatn \
-    --archive-dir /cluster/work/projects/nn10014k/luli/kin2025 \
+    --archive-dir /cluster/work/projects/nn10014k/luli/kin2025/mrro \
     --out-dir /cluster/work/projects/nn10014k/luli/evangervatn/basin_mrro/ \
     --scenarios hist --methods eqm --models cnrm-r1i1p1-aladin -v
 ```
