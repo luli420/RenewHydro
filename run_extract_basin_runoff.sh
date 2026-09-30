@@ -49,11 +49,34 @@ MODELS=""      # empty -> all models
 mkdir -p "${REPO_DIR}/logs" "${OUT_DIR}"
 cd "${REPO_DIR}"
 
-# Load conda and activate the analysis environment.
-# TODO: verify the exact Miniconda/Anaconda module name+version available on Olivia (e.g. `module avail conda`) and adjust below if needed.
-module load Miniconda3/23.10.0-py310  # placeholder module name/version -- confirm on Olivia
-source "${EBROOTMINICONDA3}/etc/profile.d/conda.sh"
-conda activate evanger  # adjust to your actual env name/activation method if different
+# Locate and initialize conda. SLURM batch scripts don't source ~/.bashrc,
+# so `conda activate` fails with "command not found" unless conda.sh is
+# sourced explicitly first. Olivia has no loadable conda module (confirmed
+# via `module spider conda` -- only an unrelated Lustre filesystem module
+# showed up), so this searches common self-installed Miniconda/Anaconda
+# locations instead of `module load`. Add your real path to the front of
+# CONDA_SH_CANDIDATES if none of these match (check with
+# `grep -A2 "conda initialize" ~/.bashrc` to find where your install put it).
+CONDA_SH_CANDIDATES=(
+    "$HOME/miniconda3/etc/profile.d/conda.sh"
+    "$HOME/anaconda3/etc/profile.d/conda.sh"
+    "$HOME/miniforge3/etc/profile.d/conda.sh"
+    "/cluster/work/projects/nn10014k/luli/miniconda3/etc/profile.d/conda.sh"
+)
+CONDA_SH=""
+for candidate in "${CONDA_SH_CANDIDATES[@]}"; do
+    if [[ -f "${candidate}" ]]; then
+        CONDA_SH="${candidate}"
+        break
+    fi
+done
+if [[ -z "${CONDA_SH}" ]]; then
+    echo "ERROR: could not find conda.sh in any of: ${CONDA_SH_CANDIDATES[*]}" >&2
+    echo "Add your real Miniconda/Anaconda path to CONDA_SH_CANDIDATES in this script." >&2
+    exit 1
+fi
+source "${CONDA_SH}"
+conda activate evanger  # adjust to your actual env name if different
 
 EXTRA_ARGS=()
 [[ -n "${SCENARIOS}" ]] && EXTRA_ARGS+=(--scenarios ${SCENARIOS})
