@@ -101,7 +101,7 @@ def main():
                 for year in range(y0, y1 + 1):
                     tasks.append((method, scenario, model, year))
 
-    print(f"总共需要下载 {len(tasks)} 个文件")
+    print(f"Total files to download: {len(tasks)}")
     for i, (method, scenario, model, year) in enumerate(tasks, 1):
         print(f"[{i}/{len(tasks)}] {method} {scenario} {model} {year}")
         download_one(method, scenario, model, year)

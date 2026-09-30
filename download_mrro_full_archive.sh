@@ -58,4 +58,4 @@ download_group "rcp26"  2021 2100 "${MODELS_CMIP5[@]}"
 download_group "rcp45"  2021 2100 "${MODELS_CMIP5[@]}"
 download_group "ssp370" 2021 2100 "${MODELS_CMIP6[@]}"
 
-echo "全部完成"
+echo "All downloads complete"
