@@ -21,6 +21,71 @@ western Norway -- primary. **Driva** (Oppdal), central Norway -- possible
 second site. Driva is NOT in western Norway, so any spatial subsetting
 must be extended to cover it (see "Region bounding box" below).
 
+## Current state on Olivia (checked 2026-10-05, read this first)
+
+Verified directly on Olivia (`uan02`) on 2026-10-05. Where this section
+disagrees with older text further down, this section wins; update the
+older text when you fix the underlying issue.
+
+- **No working Python environment.** None of the `conda.sh` paths that
+  `run_extract_basin_runoff.sh` searches exist, there is no `conda` on
+  `PATH`, and `module avail` lists no conda/python module. The intended env
+  prefix `/cluster/work/projects/nn10014k/luli/envs/evanger/` looks like an
+  unfinished HPC-container-wrapper build: it has `bin/` (empty), `_bin/`, and
+  `share/`. Only the system `/usr/bin/python3` exists, without the
+  dependencies. **Rebuild the env before running any Python script on
+  Olivia,** then replace the conda block in `run_extract_basin_runoff.sh`
+  (`export PATH=<prefix>/bin:$PATH` for a container-wrapper env).
+- **Archive is partly downloaded** (`/cluster/work/projects/nn10014k/luli/kin2025/mrro`,
+  ~1.2 TB, 2,616 non-empty files of ~6,784 expected):
+  - `eqm/hist` and `3dbc-eqm/hist`: complete (20 models x 50 years each).
+  - `eqm/rcp26`: 8 of 10 models; `hadgem-r1i1p1-remo` stops at 2078.
+  - `rcp45`, `ssp370`, and all `3dbc-eqm` future scenarios: not downloaded.
+  - `eqm/rcp26/hadgem-r1i1p1-remo/..._2079.nc4` is a **0-byte file** left by
+    a job killed mid-transfer. `wget -c` on the next download run repairs it.
+  - The last two download jobs (2399434, 4 h; 2409312, 24 h) both ended in
+    `TIMEOUT`. Resubmit to continue; `run_download_mrro.sh` asks for 3 days.
+  - `extract_basin_runoff.py` skips a missing *member folder* with a
+    warning, but `extract_layer1_timeseries.extract_member()` raises
+    `FileNotFoundError` on a missing *year file* in an existing folder, and a
+    0-byte file fails on open. So run only `--scenarios hist` until the
+    download is complete.
+- **Evanger catchment shapefiles** are untracked, in the repo working
+  copy: `Evanger_system/<NN_name>/_ags_data/zipfolder/NedbfeltF_v4.shp`
+  (exception: `12_eitro/_ags_data1/...`). There are 24 folders, each with
+  **one polygon** (NVE Nedbørfelt export, ~280 attribute fields including
+  `areal_km2` and `vassdragNr`). The `-nevina` variants of 03, 12 and 15
+  have the same `vassdragNr` but much larger areas (03: 4.0 vs 50.4 km²;
+  15: 21.6 vs 75.9 km²), so they are probably the full upstream catchment
+  rather than the local area.
+  - **Decision (2026-10-05):** extract **one series per sub-catchment for
+    the 21 local polygons** (use `03_eide_fanndal`, `12_eitro`,
+    `15_askjelldalsvatn`; exclude the three `-nevina` variants). Do this
+    in a single pass: merge the 21 polygons into one file with an ID column
+    (folder name) and pass `--id-col`, rather than running the job 21 times
+    over the archive.
+  - The path in `run_extract_basin_runoff.sh` and the docstring of
+    `extract_basin_runoff.py`
+    (`/cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp`)
+    **does not exist**.
+- **`/cluster/work` gives intermittent `Input/output error`s** on small
+  files: the same `.prj` files failed in one run and read fine in the next.
+  Retry before you conclude that a file is corrupt.
+- **SLURM partitions on Olivia** (`sinfo`): `small` (default), `large`,
+  `accel` (GPU, do not use). `run_layer1_array.sh` asks for
+  `--partition=normal`, **which does not exist** and must be changed
+  before you submit it.
+- **`run_SBATCH.sh`** is the job script the user actually submits. It has its
+  own `#SBATCH` header and calls another script with `bash`, so the
+  `#SBATCH` lines inside the called script are ignored. As of 2026-10-05, it
+  runs `download_mrro_full_archive.sh`; the `run_extract_basin_runoff.sh`
+  line is commented out.
+- **Git:** the working branch is `claude/evanger-kin2025`. Claude Code web
+  sessions also push to it, so run `git pull --rebase` on Olivia before you
+  commit there. Never force-push this branch. Untracked local data on Olivia
+  (`Evanger_system/`, `download_mrro_full.log`, `slurm-*.out`) must not be
+  committed.
+
 ## Commands
 
 There is no build step, no package (`requirements.txt` only, no
@@ -96,9 +161,16 @@ sbatch run_extract_basin_runoff.sh    # single serial job, loops all combos inte
 
 `member_manifest.csv` is generated once outside the array from
 `kin2025_config.scenario_member_combos()` — the snippet is commented inside
-`run_layer1_array.sh`. Both scripts use `--account=nn10014k` and
-`--partition=small` (`sinfo` on Olivia shows `small`/`large`/`accel`;
-`accel` is GPU — never use it here).
+`run_layer1_array.sh`. Both scripts use `--account=nn10014k`. Partitions on
+Olivia (`sinfo`): `small` (default), `large`, `accel` (GPU — never use it
+here). `run_layer1_array.sh` currently asks for `--partition=normal`, which
+does not exist on Olivia — change it to `small`; `run_extract_basin_runoff.sh`
+sets no partition and gets `small`.
+
+```bash
+sbatch run_download_mrro.sh           # resumable full-archive download (wget -c), 3-day limit
+sbatch run_SBATCH.sh                  # the user's own generic wrapper: runs whichever script is uncommented in it
+```
 
 ### On testing
 
@@ -314,12 +386,13 @@ Bulken has an Evanger intake dam:
 - **Two storage roots are in play and the scripts disagree** -- check which
   one you actually want before copying paths:
   - **NIRD** `/nird/datapeak/NS10014K/WP6/luli/Klima_i_Norge_2025/` --
-    hardcoded in `download_mrro_full_archive.sh` and `run_layer1_array.sh`;
-    the project storage area for the staged archive, weight matrices, and
-    Layer 1/2 outputs.
+    still hardcoded in `run_layer1_array.sh`; intended as the project
+    storage area for weight matrices and Layer 1/2 outputs.
   - **Olivia work area** `/cluster/work/projects/nn10014k/luli/` --
-    hardcoded in `run_extract_basin_runoff.sh`, and where the archive was
-    actually found during the 2026-08 session (`.../kin2025/mrro`).
+    hardcoded in `run_extract_basin_runoff.sh`, `run_download_mrro.sh`,
+    `run_SBATCH.sh`, and (since commit `9c2e5a2`) in
+    `download_mrro_full_archive.sh`'s `OUT_DIR`. The archive is staged here
+    (`.../kin2025/mrro`); see "Current state on Olivia" for how much.
 
   Write to either, not `$HOME`. **Check the project quota before staging
   the full archive**: ~350 GB/member uncompressed, multi-TB across all
@@ -418,6 +491,19 @@ not done yet.
 
 ## Open items / next steps
 
+Blocking the Evanger run on Olivia (see "Current state on Olivia"):
+
+- **Rebuild the `evanger` env** and update the activation block in
+  `run_extract_basin_runoff.sh`.
+- **Finish the archive download** (resubmit `run_download_mrro.sh`).
+- **Merge the 21 local Evanger sub-catchment polygons** into one file with
+  an ID column, point `CATCHMENTS` in `run_extract_basin_runoff.sh` at it,
+  and pass `--id-col`.
+- **First real test:** `--scenarios hist --methods eqm --models <one>`;
+  confirm the `mrro` units and plot the weight mask before the full run.
+
+Pipeline-wide:
+
 1. **Verify the region bounding box** covers both Evanger and Driva (see
    "Region bounding box" above).
 2. **Run `fetch_nve_subcatchments.py` on a machine with NVE access**
@@ -480,13 +566,15 @@ not done yet.
 ## Single-basin quick extraction (extract_basin_runoff.py)
 
 For a one-off basin with its own shapefile (not NVE's delfelt layer) and an
-archive already staged locally -- e.g. testing against Evangervatn on
-Olivia at `/cluster/work/projects/nn10014k/luli/kin2025` with the basin
-polygon at `/cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp`:
+archive already staged locally -- e.g. one Evanger sub-catchment on Olivia,
+with the archive at `/cluster/work/projects/nn10014k/luli/kin2025/mrro` and
+the polygons under `Evanger_system/` in the repo working copy (see "Current
+state on Olivia"; the older `.../luli/evangervatn/zipfolder/` path does not
+exist):
 
 ```
 python extract_basin_runoff.py \
-    --catchments /cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp \
+    --catchments Evanger_system/10_groendalsvatn/_ags_data/zipfolder/NedbfeltF_v4.shp \
     --basin-name Evangervatn \
     --archive-dir /cluster/work/projects/nn10014k/luli/kin2025/mrro \
     --out-dir /cluster/work/projects/nn10014k/luli/evangervatn/basin_mrro/ \
