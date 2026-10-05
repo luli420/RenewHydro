@@ -3,7 +3,7 @@
 # 覆盖两种偏差校正方法 x 四种排放情景 x 所有对应气候模式 x 所有年份
 
 BASE_URL="https://thredds.met.no/thredds/fileServer/KSS/Klima_i_Norge/utgave2025/DailyTimeSeries/mrro"
-OUT_DIR="/nird/datapeak/NS10014K/WP6/luli/Klima_i_Norge_2025/mrro/"   # 改成你在 NIRD 上想要的输出路径
+OUT_DIR="/cluster/work/projects/nn10014k/luli/kin2025/mrro/"   # 改成你在 NIRD 上想要的输出路径
 LOG_FILE="download_mrro_full.log"
 
 mkdir -p "$OUT_DIR"

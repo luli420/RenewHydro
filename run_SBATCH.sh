@@ -8,7 +8,7 @@
 # 
 #SBATCH --job-name="basin_mrro"
 ## Wall time limit:
-#SBATCH --time=4:00:0
+#SBATCH --time=24:00:0
 ## Number of nodes:
 #SBATCH --nodes=1
 ## Number of tasks to start on each node:
@@ -28,6 +28,8 @@ module list             # List loaded modules, for easier debugging
 # directory on /work where the job runs
 cd /cluster/work/projects/nn10014k/luli/RenewHydro/
 
-bash run_extract_basin_runoff.sh
+#bash run_extract_basin_runoff.sh
+
+bash download_mrro_full_archive.sh
 
 exit $?
