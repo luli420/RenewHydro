@@ -1,13 +1,19 @@
 #!/bin/bash
-# SLURM batch job: run extract_basin_runoff.py for the Evangervatn test case
-# against the full local KiN2025 archive on Olivia. Not an array -- this is
-# one serial job that loops every (scenario, member) combination internally
-# (see extract_basin_runoff.py); submit with:
+# SLURM batch job: run extract_basin_runoff.py for the 21 local Evanger
+# sub-catchments (one series each, one pass over the archive) against the
+# local KiN2025 archive on Olivia. Not an array -- this is one serial job
+# that loops every (scenario, member) combination internally (see
+# extract_basin_runoff.py); submit with:
 #
 #   sbatch run_extract_basin_runoff.sh
 #
-# Defaults to the FULL archive (all scenarios/methods/models). To repeat a
-# narrower test instead, edit SCENARIOS/METHODS/MODELS below.
+# The catchment GeoPackage is built once with merge_catchment_shapefiles.py
+# (see CATCHMENTS below).
+#
+# Defaults to the FULL archive (all scenarios/methods/models). For a narrower
+# test, override from the command line instead of editing this file, e.g.:
+#
+#   sbatch --time=02:00:00 --export=ALL,SCENARIOS=hist,METHODS=eqm,MODELS=cnrm-r1i1p1-aladin run_extract_basin_runoff.sh
 #
 # NOT tuned against a real timing measurement -- estimate your own runtime
 # from the small hist+rcp45/1-model/1-method test you already ran: check
@@ -34,49 +40,36 @@
 set -euo pipefail
 
 REPO_DIR="/cluster/work/projects/nn10014k/luli/RenewHydro"
-CATCHMENTS="/cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp"
+# 21 local Evanger sub-catchments (the -nevina upstream variants excluded),
+# built with:
+#   python merge_catchment_shapefiles.py --root Evanger_system \
+#       --exclude 'nevina$' --out Evanger_system/evanger_local_subcatchments.gpkg -v
+CATCHMENTS="${REPO_DIR}/Evanger_system/evanger_local_subcatchments.gpkg"
+ID_COL="basin"          # one output series per catchment folder name
+BASIN_NAME="Evanger"    # used only for the output filename (evanger_basin_mrro.csv)
 ARCHIVE_DIR="/cluster/work/projects/nn10014k/luli/kin2025/mrro"
 OUT_DIR="/cluster/work/projects/nn10014k/luli/evangervatn/basin_mrro"
 
-# Full archive by default. To repeat a narrower test, uncomment and edit:
-# SCENARIOS="hist rcp45"
-# METHODS="eqm"
-# MODELS="cnrm-r1i1p1-aladin"
-SCENARIOS=""   # empty -> extract_basin_runoff.py's own default (all scenarios)
-METHODS=""     # empty -> all methods
-MODELS=""      # empty -> all models
+# Full archive by default; override via the environment (see header), e.g.
+# SCENARIOS="hist rcp45" METHODS="eqm" MODELS="cnrm-r1i1p1-aladin".
+SCENARIOS="${SCENARIOS:-}"   # empty -> extract_basin_runoff.py's own default (all scenarios)
+METHODS="${METHODS:-}"       # empty -> all methods
+MODELS="${MODELS:-}"         # empty -> all models
 
 mkdir -p "${REPO_DIR}/logs" "${OUT_DIR}"
 cd "${REPO_DIR}"
 
-# Locate and initialize conda. SLURM batch scripts don't source ~/.bashrc,
-# so `conda activate` fails with "command not found" unless conda.sh is
-# sourced explicitly first. Olivia has no loadable conda module (confirmed
-# via `module spider conda` -- only an unrelated Lustre filesystem module
-# showed up), so this searches common self-installed Miniconda/Anaconda
-# locations instead of `module load`. Add your real path to the front of
-# CONDA_SH_CANDIDATES if none of these match (check with
-# `grep -A2 "conda initialize" ~/.bashrc` to find where your install put it).
-CONDA_SH_CANDIDATES=(
-    "$HOME/miniconda3/etc/profile.d/conda.sh"
-    "$HOME/anaconda3/etc/profile.d/conda.sh"
-    "$HOME/miniforge3/etc/profile.d/conda.sh"
-    "/cluster/work/projects/nn10014k/luli/miniconda3/etc/profile.d/conda.sh"
-)
-CONDA_SH=""
-for candidate in "${CONDA_SH_CANDIDATES[@]}"; do
-    if [[ -f "${candidate}" ]]; then
-        CONDA_SH="${candidate}"
-        break
-    fi
-done
-if [[ -z "${CONDA_SH}" ]]; then
-    echo "ERROR: could not find conda.sh in any of: ${CONDA_SH_CANDIDATES[*]}" >&2
-    echo "Add your real Miniconda/Anaconda path to CONDA_SH_CANDIDATES in this script." >&2
+# Python env: an HPC-container-wrapper (Tykky) env built from
+# requirements.txt (spec: /cluster/projects/nn10014k/Luli/envs/evanger-env.yml).
+# Tykky envs are activated by putting their bin/ first on PATH -- no conda
+# needed (Olivia has no conda module). It lives on /cluster/projects, not
+# /cluster/work, because the previous env's image on /cluster/work vanished.
+ENV_PREFIX="/cluster/projects/nn10014k/Luli/envs/evanger"
+if [[ ! -x "${ENV_PREFIX}/bin/python" ]]; then
+    echo "ERROR: no python in ${ENV_PREFIX}/bin -- rebuild the env (see CLAUDE.md)" >&2
     exit 1
 fi
-source "${CONDA_SH}"
-conda activate evanger  # adjust to your actual env name if different
+export PATH="${ENV_PREFIX}/bin:${PATH}"
 
 EXTRA_ARGS=()
 [[ -n "${SCENARIOS}" ]] && EXTRA_ARGS+=(--scenarios ${SCENARIOS})
@@ -85,10 +78,9 @@ EXTRA_ARGS=()
 
 python extract_basin_runoff.py \
     --catchments "${CATCHMENTS}" \
-    --basin-name Evangervatn \
+    --id-col "${ID_COL}" \
+    --basin-name "${BASIN_NAME}" \
     --archive-dir "${ARCHIVE_DIR}" \
     --out-dir "${OUT_DIR}" \
     "${EXTRA_ARGS[@]}" \
     -v
-
-
