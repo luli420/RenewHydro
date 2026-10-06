@@ -68,6 +68,22 @@ older text when you fix the underlying issue.
     `extract_basin_runoff.py`
     (`/cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp`)
     **does not exist**.
+- **`/cluster/work/projects/nn10014k` is auto-cleaned** (Sigma2 docs,
+  checked 2026-10-06): a weekly scan deletes files whose newest of
+  creation/modification/access time is older than 21 days (up to 42 days if
+  space allows; sooner when the filesystem is >70% full). It is not backed
+  up. This is the most likely reason the old `envs/evanger` image vanished
+  (built 2026-08-10, gone by 2026-09-06). Consequences:
+  - Keep envs, inputs you cannot recreate, and final results in
+    `/cluster/projects/nn10014k/Luli/` (backed up; 1 TiB quota shared by the
+    project, ~540 GiB used). The env is already there, and a copy of
+    `Evanger_system/` is in `/cluster/projects/nn10014k/Luli/backup/`.
+  - The staged archive (`kin2025/mrro`, files dated 2026-10-01/02) does not
+    fit in the project quota, so it is at risk from ~2026-10-22 unless it is
+    read or re-touched; plan the full extraction before then, or move the
+    archive to NIRD.
+  - Copy `evanger_basin_mrro.csv` and other results to `/cluster/projects`
+    after each run.
 - **`/cluster/work` gives intermittent `Input/output error`s** on small
   files: the same `.prj` files failed in one run and read fine in the next.
   Retry before you conclude that a file is corrupt.
