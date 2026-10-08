@@ -43,6 +43,18 @@ download_group() {
       for year in $(seq "$y0" "$y1"); do
         fname="${model}_${scenario}_${method}-estobs_disthbv_norway_1km_mrro_daily_${year}.nc4"
         url="${BASE_URL}/${method}/${scenario}/${model}/${fname}"
+        # Skip files that are already complete. thredds.met.no answers a Range
+        # request past the end of a file with "206" and an empty body instead
+        # of "416", so `wget -c` on a complete file retries 20 times (~2.5 min)
+        # and then reports FAIL (confirmed 2026-10-08). Partial files still
+        # resume with wget -c below.
+        remote_size=$(curl -sfI "$url" | awk 'tolower($1)=="content-length:" {print $2}' | tr -d '\r')
+        local_size=$(stat -L -c %s "$outdir/$fname" 2>/dev/null || echo 0)
+        if [[ -n "$remote_size" && "$local_size" == "$remote_size" ]]; then
+          echo "$(date '+%F %T') SKIP complete $fname" >> "$LOG_FILE"
+          sleep 1
+          continue
+        fi
         echo "$(date '+%F %T') downloading $fname" >> "$LOG_FILE"
         wget -c -q -O "$outdir/$fname" "$url" \
           && echo "$(date '+%F %T') OK $fname" >> "$LOG_FILE" \
