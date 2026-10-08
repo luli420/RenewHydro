@@ -69,13 +69,40 @@ def open_year(
 
 _UNITS_LOGGED = False
 
+# Source `units` attribute -> factor that converts the values to mm/day.
+# CONFIRMED on the real archive on Olivia (2026-10-07, hist/eqm/cnrm-r1i1p1-aladin):
+# KiN2025 mrro is stored as a flux in "kg m-2 s-1" (1 kg m-2 = 1 mm of water),
+# so x86400 gives mm/day. After the conversion, Evanger's 1991-2020 annual
+# totals are 2,000-3,060 mm, the same order as NVE's QN9120 normals (2,675-3,570 mm).
+# Unknown units raise an error rather than pass through silently.
+UNIT_TO_MM_PER_DAY = {
+    "kg m-2 s-1": 86400.0,
+    "kg m**-2 s**-1": 86400.0,
+    "kg/m2/s": 86400.0,
+    "mm s-1": 86400.0,
+    "mm/s": 86400.0,
+    "mm day-1": 1.0,
+    "mm/day": 1.0,
+    "mm d-1": 1.0,
+}
+
 
 def _log_units_once(da: xr.DataArray) -> None:
     global _UNITS_LOGGED
     if not _UNITS_LOGGED:
         units = da.attrs.get("units", "<missing units attribute>")
-        logger.info("mrro units attribute: %s -- confirm this matches expectations (mm/day) before trusting output", units)
+        logger.info("mrro units attribute: %s -- converted to mm/day with factor %s", units, UNIT_TO_MM_PER_DAY.get(units.strip(), "<unknown>"))
         _UNITS_LOGGED = True
+
+
+def mm_per_day_factor(da: xr.DataArray) -> float:
+    units = str(da.attrs.get("units", "")).strip()
+    if units not in UNIT_TO_MM_PER_DAY:
+        raise ValueError(
+            f"Unknown mrro units {units!r} -- add the correct mm/day factor to "
+            "UNIT_TO_MM_PER_DAY in extract_layer1_timeseries.py after checking the source file"
+        )
+    return UNIT_TO_MM_PER_DAY[units]
 
 
 def extract_member(
@@ -109,7 +136,7 @@ def extract_member(
         R = da.values.reshape(ntime, ny * nx)  # row-major: matches W's flat = Yc_idx*nx + Xc_idx
         R = np.nan_to_num(R, nan=0.0)  # cells outside the archive's land mask; W already excludes zero-overlap delfelt
 
-        basin_means = (W @ R.T).T  # (ntime, n_delfelt)
+        basin_means = (W @ R.T).T * mm_per_day_factor(da)  # (ntime, n_delfelt), mm/day
 
         all_times.append(da["time"].values)
         all_values.append(basin_means)
@@ -126,7 +153,7 @@ def extract_member(
             "model": model,
             "scenario": scenario,
             "member_id": f"{model}_{method}",
-            "units": "mm/day (inherited from source grid -- verify against source attrs logged above)",
+            "units": "mm/day",
             "coverage_weighting": meta.get("coverage_method", "unknown"),
             "source": "NCCS Klima i Norge 2025 (KiN2025), distHBV-COR-BA-2025, mrro",
         },
