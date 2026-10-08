@@ -70,6 +70,10 @@ if [[ ! -x "${ENV_PREFIX}/bin/python" ]]; then
     exit 1
 fi
 export PATH="${ENV_PREFIX}/bin:${PATH}"
+# Ignore packages installed with `pip install --user` (~/.local, ~135 of
+# them on Olivia): without this, the env's python imported xarray etc. from
+# there instead of from the container.
+export PYTHONNOUSERSITE=1
 
 EXTRA_ARGS=()
 [[ -n "${SCENARIOS}" ]] && EXTRA_ARGS+=(--scenarios ${SCENARIOS})

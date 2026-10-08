@@ -63,7 +63,10 @@ def open_year(
         url, _ = build_url(method=method, scenario=scenario, model=model, year=year, base=opendap_base)
         ds = xr.open_dataset(url)
 
-    da = ds["mrro"].isel(Yc=yc_slice, Xc=xc_slice)
+    # Load only the window and close the file at once: open files kept their
+    # HDF chunk caches and the 2026-10-08 hist run hit its 16 GB limit.
+    with ds:
+        da = ds["mrro"].isel(Yc=yc_slice, Xc=xc_slice).load()
     return da
 
 
