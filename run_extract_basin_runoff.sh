@@ -48,7 +48,7 @@ CATCHMENTS="${REPO_DIR}/Evanger_system/evanger_local_subcatchments.gpkg"
 ID_COL="basin"          # one output series per catchment folder name
 BASIN_NAME="Evanger"    # used only for the output filename (evanger_basin_mrro.csv)
 ARCHIVE_DIR="/cluster/work/projects/nn10014k/luli/kin2025/mrro"
-OUT_DIR="/cluster/work/projects/nn10014k/luli/evangervatn/basin_mrro"
+OUT_DIR="${OUT_DIR:-/cluster/work/projects/nn10014k/luli/evangervatn/basin_mrro}"   # overridable, e.g. one folder per run
 
 # Full archive by default; override via the environment (see header), e.g.
 # SCENARIOS="hist rcp45" METHODS="eqm" MODELS="cnrm-r1i1p1-aladin".
