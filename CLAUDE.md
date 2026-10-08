@@ -68,6 +68,23 @@ older text when you fix the underlying issue.
     `extract_basin_runoff.py`
     (`/cluster/work/projects/nn10014k/luli/evangervatn/zipfolder/NedbfeltF_v4.shp`)
     **does not exist**.
+- **`mrro` units: confirmed `kg m-2 s-1`** on the real archive (2026-10-07),
+  not mm/day. `extract_layer1_timeseries.extract_member()` now converts to
+  mm/day (x86400, table `UNIT_TO_MM_PER_DAY`) and raises an error on unknown
+  units, so `mrro_mm` in every output really is mm/day. Outputs written before
+  commit "Convert KiN2025 mrro from kg m-2 s-1 to mm/day" are 86400x too small.
+- **First real test passed** (job 2467004, hist/eqm/cnrm-r1i1p1-aladin, 21
+  Evanger sub-catchments): 50 year files in ~2 min, complete 1971-2020 daily
+  series, weight rows sum to 1.0 (area-weighted mean). 1991-2020 mean annual
+  runoff is 1,993-3,058 mm, a median **0.80x NVE's `QN9120_mmA`** normals
+  from the shapefiles. That is one member only; recheck the bias with the
+  full ensemble before using absolute values (see "Analyses" item 7).
+  A copy of the test CSV is in `/cluster/projects/nn10014k/Luli/results/`.
+- **Download fix (2026-10-08):** thredds.met.no answers a past-end Range
+  request with 206 + empty body, so `wget -c` on an already complete file
+  retried for ~2.5 min and logged FAIL; job 2441200 re-checked hist for 33 h
+  without one new file. `download_mrro_full_archive.sh` now skips files whose
+  local size equals the server's Content-Length.
 - **`/cluster/work/projects/nn10014k` is auto-cleaned** (Sigma2 docs,
   checked 2026-10-06): a weekly scan deletes files whose newest of
   creation/modification/access time is older than 21 days (up to 42 days if
@@ -199,8 +216,9 @@ than trusted. If you add tests, `pytest` is not currently a dependency.
 ## Data source
 
 - Dataset: NCCS "Klima i Norge 2025" (KiN2025) / CiN-2025 hydrological
-  projections, `distHBV-COR-BA-2025`, variable `mrro` (runoff, mm/day --
-  **confirm the units attribute on the actual file**, don't just assume).
+  projections, `distHBV-COR-BA-2025`, variable `mrro` (runoff). **Stored as
+  `kg m-2 s-1`** (confirmed on the real archive, 2026-10-07); the extraction
+  converts it to mm/day.
   Dyrrdal et al. 2025, NVE + MET Norway, served on `thredds.met.no`.
 - **Confirmed OPeNDAP base and dims** (used successfully by
   `download_mrro_full_archive.sh` and `download_mrro_vestlandet_subset.py`
