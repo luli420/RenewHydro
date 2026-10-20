@@ -38,6 +38,11 @@ download_group() {
       if [[ "$scenario" == "rcp26" || "$scenario" == "rcp45" ]] && is_hadgem "$model"; then
         y1=2098
       fi
+      # ssp370 ends in 2099 for these 3 CMIP6 runs (server 404 for 2100);
+      # keep in sync with SSP370_END_2099_MODELS in kin2025_config.py
+      if [[ "$scenario" == "ssp370" && ( "$model" == "mpi-r1i1p1f1-icon" || "$model" == "miroc-r1i1p1f1-icon" || "$model" == "ecearthveg-r1i1p1f1-cclm" ) ]]; then
+        y1=2099
+      fi
       local outdir="$OUT_DIR/$method/$scenario/$model"
       mkdir -p "$outdir"
       for year in $(seq "$y0" "$y1"); do
@@ -56,7 +61,10 @@ download_group() {
           continue
         fi
         echo "$(date '+%F %T') downloading $fname" >> "$LOG_FILE"
-        wget -c -q -O "$outdir/$fname" "$url" \
+        # --no-use-server-timestamps: wget otherwise sets the file date to the
+        # server's (Oct 2025), and Olivia's /cluster/work cleanup then deletes
+        # the file as "old" -- this deleted the whole archive on 2026-10-20.
+        wget -c -q --no-use-server-timestamps -O "$outdir/$fname" "$url" \
           && echo "$(date '+%F %T') OK $fname" >> "$LOG_FILE" \
           || echo "$(date '+%F %T') FAIL $fname" >> "$LOG_FILE"
         sleep 1   # 礼貌性延迟,避免对服务器造成压力,遵守网站使用条款

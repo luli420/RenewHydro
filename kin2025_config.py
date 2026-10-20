@@ -43,6 +43,10 @@ MODELS_HIST = MODELS_CMIP5 + MODELS_CMIP6
 
 HADGEM_MODELS = {"hadgem-r1i1p1-rca", "hadgem-r1i1p1-remo"}
 
+# CMIP6 runs whose ssp370 files stop at 2099: the server returns 404 for 2100
+# (confirmed on thredds.met.no, 2026-10-19; 2099 returns 200).
+SSP370_END_2099_MODELS = {"mpi-r1i1p1f1-icon", "miroc-r1i1p1f1-icon", "ecearthveg-r1i1p1f1-cclm"}
+
 # scenario -> (models, start_year, default_end_year)
 SCENARIOS = {
     "hist":   (MODELS_HIST,  1971, 2020),
@@ -53,9 +57,12 @@ SCENARIOS = {
 
 
 def end_year_for(scenario: str, model: str, default_end: int) -> int:
-    """A handful of HadGEM-driven RCP2.6/4.5 runs stop at 2098, not 2100."""
+    """A handful of runs stop before 2100: HadGEM-driven RCP2.6/4.5 at 2098,
+    and three CMIP6 ssp370 runs at 2099."""
     if scenario in ("rcp26", "rcp45") and model in HADGEM_MODELS:
         return 2098
+    if scenario == "ssp370" and model in SSP370_END_2099_MODELS:
+        return 2099
     return default_end
 
 
