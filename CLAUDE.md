@@ -21,35 +21,49 @@ western Norway -- primary. **Driva** (Oppdal), central Norway -- possible
 second site. Driva is NOT in western Norway, so any spatial subsetting
 must be extended to cover it (see "Region bounding box" below).
 
-## Current state on Olivia (checked 2026-10-05, read this first)
+## Current state on Olivia (updated 2026-10-20, read this first)
 
-Verified directly on Olivia (`uan02`) on 2026-10-05. Where this section
-disagrees with older text further down, this section wins; update the
-older text when you fix the underlying issue.
+Verified directly on Olivia (`uan02`). Where this section disagrees with
+older text further down, this section wins; update the older text when you
+fix the underlying issue.
 
-- **No working Python environment.** None of the `conda.sh` paths that
-  `run_extract_basin_runoff.sh` searches exist, there is no `conda` on
-  `PATH`, and `module avail` lists no conda/python module. The intended env
-  prefix `/cluster/work/projects/nn10014k/luli/envs/evanger/` looks like an
-  unfinished HPC-container-wrapper build: it has `bin/` (empty), `_bin/`, and
-  `share/`. Only the system `/usr/bin/python3` exists, without the
-  dependencies. **Rebuild the env before running any Python script on
-  Olivia,** then replace the conda block in `run_extract_basin_runoff.sh`
-  (`export PATH=<prefix>/bin:$PATH` for a container-wrapper env).
-- **Archive is partly downloaded** (`/cluster/work/projects/nn10014k/luli/kin2025/mrro`,
-  ~1.2 TB, 2,616 non-empty files of ~6,784 expected):
-  - `eqm/hist` and `3dbc-eqm/hist`: complete (20 models x 50 years each).
-  - `eqm/rcp26`: 8 of 10 models; `hadgem-r1i1p1-remo` stops at 2078.
-  - `rcp45`, `ssp370`, and all `3dbc-eqm` future scenarios: not downloaded.
-  - `eqm/rcp26/hadgem-r1i1p1-remo/..._2079.nc4` is a **0-byte file** left by
-    a job killed mid-transfer. `wget -c` on the next download run repairs it.
-  - The last two download jobs (2399434, 4 h; 2409312, 24 h) both ended in
-    `TIMEOUT`. Resubmit to continue; `run_download_mrro.sh` asks for 3 days.
-  - `extract_basin_runoff.py` skips a missing *member folder* with a
-    warning, but `extract_layer1_timeseries.extract_member()` raises
-    `FileNotFoundError` on a missing *year file* in an existing folder, and a
-    0-byte file fails on open. So run only `--scenarios hist` until the
-    download is complete.
+- **Python env (works):** Tykky env at `/cluster/projects/nn10014k/Luli/envs/evanger`
+  (Python 3.11, all of `requirements.txt`; spec `.../Luli/envs/evanger-env.yml`).
+  Activate with `export PATH=/cluster/projects/nn10014k/Luli/envs/evanger/bin:$PATH`
+  and `export PYTHONNOUSERSITE=1` (~135 packages in `~/.local` otherwise
+  shadow the env's). The old `/cluster/work/.../luli/envs/evanger` is broken.
+  Do not run Python scripts from the shared `/tmp`: another user's
+  `/tmp/inspect.py` shadows the standard library there.
+- **The staged archive was DELETED by the /cluster/work cleanup on
+  2026-10-20 06:27** (6,770 of 6,778 files; 8 survive). Root cause: `wget`
+  sets each file's modification time to the server's Last-Modified date
+  (Oct 2025), so freshly downloaded files looked a year old. The only
+  survivors were files re-written by `verify_kin2025_archive.py` (Python
+  writes the current time). `download_mrro_full_archive.sh` now passes
+  `--no-use-server-timestamps`. Never rely on access time to predict the
+  cleanup: atime was 2026-10-10 for every deleted file.
+- **Archive facts learned before the loss (2026-10-10):**
+  - Complete set is **6,778 files, ~3.1 TB**. `ssp370` ends in **2099** for
+    `mpi-r1i1p1f1-icon`, `miroc-r1i1p1f1-icon`, `ecearthveg-r1i1p1f1-cclm`
+    (server 404 for 2100); `kin2025_config.SSP370_END_2099_MODELS` and the
+    download script now know this. HadGEM rcp26/rcp45 end in 2098.
+  - A file can have the server's exact size and still be damaged ("NetCDF:
+    HDF error"): 13 of 6,784 on the full check (7 real, 6 = the 404s). Run
+    `verify_kin2025_archive.py --redownload` after every download.
+  - Download speed ~33 s per file from a compute node (~2.5 days in total).
+  - `extract_layer1_timeseries.extract_member()` raises `FileNotFoundError`
+    on a missing year file, so the archive must be complete for a scenario
+    before you extract it.
+- **Results that still exist (2026-10-20):**
+  `/cluster/work/projects/nn10014k/luli/evangervatn/basin_mrro_hist/evanger_basin_mrro.csv`
+  (full hist: 40 members x 21 basins, 1971-2020, 15,340,920 rows, no NaN;
+  job 2468667, 1 h 53 min, MaxRSS ~16 GB = the limit, so ask for 32 GB next
+  time). They are on /cluster/work too, so back them up (the user wants
+  backups on NIRD: `/nird/projects/NS10014K/WP6/luli/RenewHydro_data/`).
+- **hist bias vs NVE:** 1991-2020 mean annual runoff is a median **0.795x**
+  `QN9120_mmA` (p10-p90 0.74-0.88), and nearly the same for every model
+  (0.78-0.82) and both methods. It is systematic, not member noise -- use
+  delta-change rather than absolute values (see "Analyses" item 7).
 - **Evanger catchment shapefiles** are untracked, in the repo working
   copy: `Evanger_system/<NN_name>/_ags_data/zipfolder/NedbfeltF_v4.shp`
   (exception: `12_eitro/_ags_data1/...`). There are 24 folders, each with
@@ -85,22 +99,13 @@ older text when you fix the underlying issue.
   retried for ~2.5 min and logged FAIL; job 2441200 re-checked hist for 33 h
   without one new file. `download_mrro_full_archive.sh` now skips files whose
   local size equals the server's Content-Length.
-- **`/cluster/work/projects/nn10014k` is auto-cleaned** (Sigma2 docs,
-  checked 2026-10-06): a weekly scan deletes files whose newest of
-  creation/modification/access time is older than 21 days (up to 42 days if
-  space allows; sooner when the filesystem is >70% full). It is not backed
-  up. This is the most likely reason the old `envs/evanger` image vanished
-  (built 2026-08-10, gone by 2026-09-06). Consequences:
-  - Keep envs, inputs you cannot recreate, and final results in
-    `/cluster/projects/nn10014k/Luli/` (backed up; 1 TiB quota shared by the
-    project, ~540 GiB used). The env is already there, and a copy of
-    `Evanger_system/` is in `/cluster/projects/nn10014k/Luli/backup/`.
-  - The staged archive (`kin2025/mrro`, files dated 2026-10-01/02) does not
-    fit in the project quota, so it is at risk from ~2026-10-22 unless it is
-    read or re-touched; plan the full extraction before then, or move the
-    archive to NIRD.
-  - Copy `evanger_basin_mrro.csv` and other results to `/cluster/projects`
-    after each run.
+- **`/cluster/work/projects/nn10014k` is auto-cleaned** and not backed up
+  (Sigma2 docs: files older than 21 days, up to 42 if space allows; sooner
+  when the filesystem is >70% full -- it was 74% on 2026-10-20). In practice
+  the **modification time** decided it (see the archive loss above). This
+  also explains the old env image vanishing in Sept. Keep envs, inputs you
+  cannot recreate, and results on `/cluster/projects/nn10014k/Luli/` or NIRD;
+  treat anything on /cluster/work as gone after ~2 weeks.
 - **`/cluster/work` gives intermittent `Input/output error`s** on small
   files: the same `.prj` files failed in one run and read fine in the next.
   Retry before you conclude that a file is corrupt.
