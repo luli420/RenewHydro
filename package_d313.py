@@ -68,12 +68,20 @@ def write_csvs(input_dir: Path, basins: list[str], areas: pd.Series, out: Path) 
     return frames
 
 
+def read_csvs(out: Path, basins: list[str]) -> dict[str, pd.DataFrame]:
+    """Reload already written daily CSVs (for --skip-csv)."""
+    cats = {c: "category" for c in ["date", "scenario", "model", "method", "member"]}
+    return {b: pd.read_csv(out / f"{b}.csv.gz", dtype=cats) for b in basins}
+
+
 def write_netcdf(frames: dict[str, pd.DataFrame], basins: list[str], areas: pd.Series, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     for scen in SCENARIOS:
         parts = []
         for b in basins:
             d = frames[b][frames[b]["scenario"] == scen]
+            # NetCDF cannot store pandas categoricals: use plain strings for the index
+            d = d.astype({"member": str, "date": str})
             parts.append(d.assign(basin=b).set_index(["basin", "member", "date"])["runoff_mm_day"])
         s = pd.concat(parts)
         da = s.to_xarray().astype("float32")
@@ -125,8 +133,9 @@ def write_basins(catchments: Path, nve: Path, frames: dict[str, pd.DataFrame], o
 
 def write_members(frames: dict[str, pd.DataFrame], out: Path) -> None:
     d = frames[TOTAL].assign(year=lambda x: pd.to_datetime(x["date"]).dt.year)
+    d = d.astype({"scenario": str, "model": str, "method": str})
     m = d.groupby(["scenario", "model", "method"])["year"].agg(["min", "max"]).reset_index()
-    m[["gcm", "ensemble", "rcm"]] = pd.DataFrame(m["model"].map(split_model).tolist(), index=m.index)
+    m[["gcm", "ensemble", "rcm"]] = pd.DataFrame([split_model(x) for x in m["model"]], index=m.index)
     m["cmip"] = np.where(m["ensemble"].str.contains("f"), "CMIP6", "CMIP5")
     m = m.rename(columns={"min": "first_year", "max": "last_year"})
     m[["scenario", "model", "gcm", "ensemble", "rcm", "cmip", "method", "first_year", "last_year"]].to_csv(out / "members.csv", index=False)
@@ -150,6 +159,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--nve-normals", type=Path, required=True)
     parser.add_argument("--readme", type=Path, required=True)
     parser.add_argument("--out-dir", type=Path, required=True)
+    parser.add_argument("--skip-csv", action="store_true", help="Reuse daily_csv/ from an earlier run")
     parser.add_argument("-v", "--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -163,7 +173,10 @@ def main(argv: list[str] | None = None) -> None:
     areas = pd.read_csv(args.input_dir / "areas.csv").set_index("basin")["area_km2"]
     basins = sorted(b for b in areas.index if b != TOTAL) + [TOTAL]
 
-    frames = write_csvs(args.input_dir, basins, areas, out / "daily_csv")
+    if args.skip_csv:
+        frames = read_csvs(out / "daily_csv", basins)
+    else:
+        frames = write_csvs(args.input_dir, basins, areas, out / "daily_csv")
     write_netcdf(frames, basins, areas, out / "netcdf")
     write_basins(args.catchments, args.nve_normals, frames, out / "basins")
     write_members(frames, out)
