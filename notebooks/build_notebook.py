@@ -215,6 +215,45 @@ s_ann[s_ann.basin == TOTAL].round(1)
 """)
 
 md(r"""
+### Map: change in mean annual runoff, far future (2071–2100)
+
+Ensemble median per sub-catchment (`basins_utm33.geojson`, UTM 33N). Numbers = sub-catchment IDs.
+""")
+
+code(r"""
+import json
+from matplotlib.patches import Polygon as MplPolygon
+from matplotlib.collections import PatchCollection
+
+geo = json.load(open(DATA_DIR / "basins_utm33.geojson"))
+
+def polygons(geom):
+    rings = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
+    return [np.asarray(poly[0]) for poly in rings]
+
+far = s_ann[s_ann.period == "Far 2071–2100"].pivot_table(index="basin", columns="scenario", values="median")
+vmax = 15
+fig, axes = plt.subplots(1, 3, figsize=(14, 5.2))
+for ax, scen in zip(axes, SCENARIOS):
+    patches, vals = [], []
+    for f in geo["features"]:
+        b = f["properties"]["basin"]
+        for ring in polygons(f["geometry"]):
+            patches.append(MplPolygon(ring / 1000, closed=True))
+            vals.append(far.loc[b, scen])
+        c = np.vstack(polygons(f["geometry"])).mean(axis=0) / 1000
+        ax.text(c[0], c[1], b[:2], ha="center", va="center", fontsize=7)
+    pc = PatchCollection(patches, cmap="BrBG", norm=mcolors.TwoSlopeNorm(0, -vmax, vmax), edgecolor="0.3", lw=0.5)
+    pc.set_array(np.asarray(vals))
+    ax.add_collection(pc)
+    ax.autoscale_view(); ax.set_aspect("equal"); ax.grid(False)
+    ax.set_xticks([]); ax.set_yticks([])
+    ax.set_title(f"{scen}, 2071–2100")
+fig.colorbar(pc, ax=axes, shrink=0.8, label="change in annual runoff (%)")
+save(fig, "03b_annual_change_map")
+""")
+
+md(r"""
 ## 4. Seasonal cycle (EVANGER_TOTAL)
 
 Monthly mean runoff (mm/day): reference (black) and future periods, ensemble median with 10–90 % band
@@ -437,6 +476,45 @@ summary["text"] = summary.apply(lambda r: f"{r['median']:+.1f} ({r.p10:+.1f} to 
 wide = summary.pivot_table(index=["basin", "scenario", "period"], columns="metric", values="text", aggfunc="first")
 wide.to_csv(FIG_DIR / "summary_changes.csv")
 wide.loc[TOTAL]
+""")
+
+md(r"""
+## 10. Key numbers for the report and slides
+
+Saved as `figures/key_numbers.json` (read by the report and slide builders).
+""")
+
+code(r"""
+def med_range(ch, basin=TOTAL):
+    s = ens_summary(ch)
+    s = s[s.basin == basin]
+    return {f"{r.scenario}|{r.period}": {"median": round(r["median"], 1), "p10": round(r.p10, 1), "p90": round(r.p90, 1), "n": int(r.n)}
+            for _, r in s.iterrows()}
+
+season_ch = {k: v for k, v in pieces.items() if k[:3] in seasons}
+far_ssp = s_ann[(s_ann.period == "Far 2071–2100") & (s_ann.basin != TOTAL)]
+key = {
+    "n_basins": len(BASINS) - 1,
+    "total_area_km2": round(float(areas[TOTAL]), 1),
+    "members": annual.groupby("scenario")["member"].nunique().to_dict(),
+    "ref_mm_total": round(float(period_stat(annual, "total_mm", "hist", REF).loc[TOTAL].median()), 0),
+    "bias_ratio": {"median": round(float(ratio.median()), 2), "min": round(float(ratio.min()), 2), "max": round(float(ratio.max()), 2)},
+    "annual": med_range(ch_ann),
+    "seasons": {k: med_range(v) for k, v in season_ch.items()},
+    "monthly_median": {f"{s}|{p}": [round(float(x), 1) for x in tab_m.loc[(s, p)].values] for s, p in COLS},
+    "cov_shift_days": med_range(ch_cov),
+    "octmar_share_pp": med_range(ch_win),
+    "max1d": med_range(ch_max1),
+    "max3d": med_range(ch_max3),
+    "min7d_summer": med_range(ch_min7),
+    "p10_dry_year": med_range(ch_p10),
+    "dry_freq_pct": {f"{s}|{p}": round(float(dry[(dry.scenario == s) & (dry.period == p)].dry_pct.median()), 0) for s, p in COLS},
+    "uncertainty_pct": {str(y): frac.loc[y].round(0).to_dict() for y in (2030, 2050, 2070, 2085) if y in frac.index},
+    "basin_range_far": {scen: {"min": round(float(far_ssp[far_ssp.scenario == scen]["median"].min()), 1),
+                               "max": round(float(far_ssp[far_ssp.scenario == scen]["median"].max()), 1)} for scen in SCENARIOS},
+}
+json.dump(key, open(FIG_DIR / "key_numbers.json", "w"), indent=1, ensure_ascii=False)
+print(json.dumps(key["annual"], indent=1, ensure_ascii=False))
 """)
 
 nb = {"cells": cells, "metadata": {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
