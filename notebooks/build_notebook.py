@@ -136,7 +136,7 @@ def heatmap(ax, table, title, fmt="{:+.0f}", vmax=None, cmap="BrBG", unit="%"):
     for i in range(data.shape[0]):
         for k in range(data.shape[1]):
             if np.isfinite(data[i, k]):
-                ax.text(k, i, fmt.format(data[i, k]), ha="center", va="center", fontsize=7)
+                ax.text(k, i, fmt.format(data[i, k]), ha="center", va="center", fontsize=7, color="w" if abs(data[i, k]) > 0.6 * vmax else "k")
     ax.grid(False)
     ax.set_title(title)
     plt.colorbar(im, ax=ax, shrink=0.6, label=unit)
@@ -247,7 +247,7 @@ for ax, scen in zip(axes, SCENARIOS):
     pc.set_array(np.asarray(vals))
     ax.add_collection(pc)
     ax.autoscale_view(); ax.set_aspect("equal"); ax.grid(False)
-    ax.set_xticks([]); ax.set_yticks([])
+    ax.set_axis_off()
     ax.set_title(f"{scen}, 2071–2100")
 fig.colorbar(pc, ax=axes, shrink=0.8, label="change in annual runoff (%)")
 save(fig, "03b_annual_change_map")
@@ -304,7 +304,7 @@ ax.set_xticks(range(12), MONTHS)
 ax.set_yticks(range(len(COLS)), [f"{s} {p.split()[0]}" for s, p in COLS])
 for i in range(v.shape[0]):
     for k in range(12):
-        ax.text(k, i, f"{v[i, k]:+.0f}", ha="center", va="center", fontsize=8)
+        ax.text(k, i, f"{v[i, k]:+.0f}", ha="center", va="center", fontsize=8, color="w" if abs(v[i, k]) > 0.6 * vmax else "k")
 ax.grid(False)
 plt.colorbar(im, ax=ax, label="%")
 ax.set_title("EVANGER_TOTAL: change in monthly runoff (ensemble median, %)")
@@ -314,24 +314,39 @@ save(fig, "05_monthly_change_total")
 md(r"""
 ## 5. Timing and winter share
 
-- **Centre-of-volume date**: day of year when 50 % of the year's runoff has passed (shift in days; negative = earlier).
-- **Oct–Mar share**: share of the calendar-year runoff that falls in Jan–Mar + Oct–Dec (change in %-points).
+Both use the **hydrological year** (1 October – 30 September, labelled by the year it ends), because runoff
+rises at both ends of the calendar year (Dec and Jan), which makes calendar-year timing misleading.
+- **Centre-of-volume date**: day of the hydrological year when 50 % of its runoff has passed, from monthly
+  totals with linear interpolation inside the month (shift in days; negative = earlier).
+- **Oct–Mar share**: share of the hydrological-year runoff that falls in October–March (change in %-points).
 """)
 
 code(r"""
-win = monthly[monthly.month.isin([1, 2, 3, 10, 11, 12])].groupby(["basin", "scenario", "member", "year"])["mrro_mm"].sum()
-allm = monthly.groupby(["basin", "scenario", "member", "year"])["mrro_mm"].sum()
-share = (100 * win / allm).rename("winter_share").reset_index()
+DAYS_IN = np.array([31, 30, 31, 31, 28.25, 31, 30, 31, 30, 31, 31, 30])   # Oct ... Sep
+wy = monthly.assign(year=monthly.year + (monthly.month >= 10).astype(int),
+                    wm=(monthly.month - 10) % 12)                        # 0 = Oct ... 11 = Sep
+wy = wy[(wy.year > wy.groupby("scenario").year.transform("min"))]          # drop the incomplete first water year
+wy["vol"] = wy.mrro_mm * DAYS_IN[wy.wm.to_numpy()]
+piv = wy.pivot_table(index=["basin", "scenario", "member", "year"], columns="wm", values="vol").dropna()
+vals = piv.to_numpy()
+cum = np.cumsum(vals, axis=1)
+half = cum[:, -1:] / 2
+k = (cum < half).sum(axis=1)                                             # month in which 50 % is reached
+prev = np.where(k > 0, cum[np.arange(len(k)), k - 1], 0.0)
+frac_in = (half[:, 0] - prev) / vals[np.arange(len(k)), k]
+day0 = np.concatenate([[0], np.cumsum(DAYS_IN)])[k]
+timing = pd.DataFrame({"cov_wday": day0 + frac_in * DAYS_IN[k],
+                       "winter_share": 100 * vals[:, :6].sum(axis=1) / cum[:, -1]}, index=piv.index).reset_index()
 
-ch_cov = member_change(annual, "cov_doy", kind="diff")
-ch_win = member_change(share, "winter_share", kind="diff")
+ch_cov = member_change(timing, "cov_wday", kind="diff")
+ch_win = member_change(timing, "winter_share", kind="diff")
 
 fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 for ax, ch, ylab, title in [(axes[0], ch_cov, "days", "Centre-of-volume date shift"),
                             (axes[1], ch_win, "%-points", "Change in Oct–Mar share")]:
     sub = ch[ch.basin == TOTAL]
     data = [sub[(sub.scenario == s) & (sub.period == p)]["change"] for s, p in COLS]
-    bp = ax.boxplot(data, patch_artist=True, widths=0.6)
+    bp = ax.boxplot(data, patch_artist=True, widths=0.6, medianprops=dict(color="k", lw=1.5))
     for patch, (s, p) in zip(bp["boxes"], COLS):
         patch.set_facecolor(SCEN_COLORS[s]); patch.set_alpha(0.4 if p.startswith("Near") else 0.8)
     ax.set_xticks(range(1, len(COLS) + 1), COL_LABELS, fontsize=8)
@@ -365,7 +380,7 @@ for ax, ch, title in [(axes[0], ch_max1, "Annual max 1-day"), (axes[1], ch_max3,
                       (axes[2], ch_min7, "Summer 7-day minimum")]:
     sub = ch[ch.basin == TOTAL]
     data = [sub[(sub.scenario == s) & (sub.period == p)]["change"] for s, p in COLS]
-    bp = ax.boxplot(data, patch_artist=True, widths=0.6)
+    bp = ax.boxplot(data, patch_artist=True, widths=0.6, medianprops=dict(color="k", lw=1.5))
     for patch, (s, p) in zip(bp["boxes"], COLS):
         patch.set_facecolor(SCEN_COLORS[s]); patch.set_alpha(0.4 if p.startswith("Near") else 0.8)
     ax.set_xticks(range(1, len(COLS) + 1), COL_LABELS, fontsize=8)
@@ -410,7 +425,7 @@ for ax, (df_, col, ylab, title, ref_line) in zip(axes, [
         (dry, "dry_pct", "% of years", "Frequency of reference-dry years (ref = 20 %)", 20),
         (ch_p10[ch_p10.basin == TOTAL], "change", "% change", "1-in-10 dry-year runoff", 0)]):
     data = [df_[(df_.scenario == s) & (df_.period == p)][col] for s, p in COLS]
-    bp = ax.boxplot(data, patch_artist=True, widths=0.6)
+    bp = ax.boxplot(data, patch_artist=True, widths=0.6, medianprops=dict(color="k", lw=1.5))
     for patch, (s, p) in zip(bp["boxes"], COLS):
         patch.set_facecolor(SCEN_COLORS[s]); patch.set_alpha(0.4 if p.startswith("Near") else 0.8)
     ax.axhline(ref_line, color="k", lw=0.8)
@@ -446,7 +461,7 @@ fig, ax = plt.subplots(figsize=(8, 4))
 ax.stackplot(frac.index, frac.T.values, labels=frac.columns, colors=["#009E73", "#56B4E9", "#CC79A7"], alpha=0.85)
 ax.set(xlim=(frac.index.min(), frac.index.max()), ylim=(0, 100), ylabel="% of total variance",
        title="EVANGER_TOTAL: sources of uncertainty, 10-yr mean annual runoff")
-ax.legend(loc="lower left")
+ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1))
 save(fig, "11_uncertainty_total")
 frac.loc[[y for y in (2030, 2050, 2070, 2085) if y in frac.index]].round(0)
 """)
