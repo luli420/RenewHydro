@@ -198,6 +198,45 @@ save(fig, "02_annual_timeseries_total")
 """)
 
 md(r"""
+### 2_1. Annual runoff, 30-year running mean, each GCM counted once
+
+Same % of 1991–2020 as Figure 2, but: each scenario's members are joined to their own `hist` run,
+the members of one GCM are averaged first (so MPI, with 6 of 20 `ssp370` members, counts once),
+then a 30-year centred running mean is applied. Thin lines = single GCMs, thick line = mean of the GCMs
+(the median of only 5–6 GCMs jumps from one GCM to another).
+""")
+
+code(r"""
+d = rel_series(annual, TOTAL).assign(gcm=lambda x: x.model.str.split("-").str[0])
+
+fig, axes = plt.subplots(1, 3, figsize=(13, 4.2), sharey=True)
+for ax, scen in zip(axes, SCENARIOS):
+    members = d.loc[d.scenario == scen, "member"].unique()
+    sub = d[d.member.isin(members) & d.scenario.isin([scen, "hist"])]
+    by_gcm = sub.groupby(["gcm", "year"])["rel"].mean().unstack(0).sort_index()
+    by_gcm = by_gcm.rolling(30, center=True, min_periods=30).mean().dropna(how="all")
+    ends = {}
+    for gcm, s in by_gcm.items():
+        ax.plot(s.index, s, color=SCEN_COLORS[scen], lw=0.8, alpha=0.5)
+        ends[gcm] = s.dropna().iloc[-1]
+    y_prev = -np.inf
+    for gcm, y in sorted(ends.items(), key=lambda kv: kv[1]):   # spread end labels at least 1.4 % apart
+        y_prev = max(y, y_prev + 1.4)
+        ax.text(by_gcm.index.max() + 1, y_prev, gcm, fontsize=7, color="0.35", va="center")
+    ax.plot(by_gcm.index, by_gcm.mean(axis=1, skipna=False), color=SCEN_COLORS[scen], lw=2.5, label="mean of GCMs")
+    ax.axhline(100, color="k", lw=0.8)
+    ax.axvspan(*REF, color="0.9", zorder=0)
+    ax.set_title(f"{scen} ({by_gcm.shape[1]} GCMs)", loc="left")
+    ax.set_xlim(1985, 2097)
+axes[0].set_ylabel("% of 1991–2020")
+axes[0].plot([], [], color="0.5", lw=0.8, label="single GCM")
+axes[0].legend(loc="upper left", frameon=False)
+fig.suptitle(f"{TOTAL} annual runoff, 30-yr running mean, each GCM counted once", x=0.01, ha="left")
+fig.tight_layout()
+save(fig, "02_1_annual_30yr_gcm_total")
+""")
+
+md(r"""
 ### 2b. Annual runoff, single years (no running mean)
 
 One panel per scenario: thin line = annual ensemble median (mm/yr), band = 10–90 % of the members,
