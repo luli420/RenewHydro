@@ -599,6 +599,16 @@ def med_range(ch, basin=TOTAL):
     return {f"{r.scenario}|{r.period}": {"median": round(r["median"], 1), "p10": round(r.p10, 1), "p90": round(r.p90, 1), "n": int(r.n)}
             for _, r in s.iterrows()}
 
+def gcm_equal(ch, basin=TOTAL):
+    # members of one GCM averaged first, then mean / lowest / highest over the GCMs (as in Figure 2_1)
+    c = ch[ch.basin == basin].assign(gcm=lambda x: x.member.str.split("-").str[0])
+    g = c.groupby(["scenario", "period", "gcm"])["change"].mean()
+    return {f"{s}|{p}": {"mean": round(float(v.mean()), 1),
+                         "min": round(float(v.min()), 1), "min_gcm": v.idxmin()[2],
+                         "max": round(float(v.max()), 1), "max_gcm": v.idxmax()[2], "n_gcm": len(v)}
+            for (s, p), v in g.groupby(level=[0, 1])}
+
+
 season_ch = {k: v for k, v in pieces.items() if k[:3] in seasons}
 far_ssp = s_ann[(s_ann.period == "Far 2071–2100") & (s_ann.basin != TOTAL)]
 key = {
@@ -608,6 +618,7 @@ key = {
     "ref_mm_total": round(float(period_stat(annual, "total_mm", "hist", REF).loc[TOTAL].median()), 0),
     "bias_ratio": {"median": round(float(ratio.median()), 2), "min": round(float(ratio.min()), 2), "max": round(float(ratio.max()), 2)},
     "annual": med_range(ch_ann),
+    "annual_gcm_equal": gcm_equal(ch_ann),
     "seasons": {k: med_range(v) for k, v in season_ch.items()},
     "monthly_median": {f"{s}|{p}": [round(float(x), 1) for x in tab_m.loc[(s, p)].values] for s, p in COLS},
     "cov_shift_days": med_range(ch_cov),
