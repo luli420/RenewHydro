@@ -256,35 +256,45 @@ def annual_stats(scen):
     sub = d[d.member.isin(scen_members[scen]) & d.scenario.isin([scen, "hist"])]
     g = sub.groupby("year")["total_mm"]
     by_gcm = sub.groupby(["gcm", "year"])["total_mm"].mean().unstack(0)
-    smooth = by_gcm.rolling(30, center=True, min_periods=30).mean().median(axis=1)
+    smooth = by_gcm.rolling(30, center=True, min_periods=30).mean().mean(axis=1, skipna=False)
     return g.median(), g.quantile(.1), g.quantile(.9), smooth
 
 
-fig, axes = plt.subplots(4, 1, figsize=(10, 11), sharex=True, sharey=True)
-meds = {}
-for ax, scen in zip(axes, SCENARIOS):
-    med, lo, hi, smooth = annual_stats(scen)
-    meds[scen] = med.loc[2021:]
-    for part, col in [(slice(None, 2020), SCEN_COLORS["hist"]), (slice(2021, None), SCEN_COLORS[scen])]:
-        ax.fill_between(med.loc[part].index, lo.loc[part], hi.loc[part], color=col, alpha=0.12, lw=0)
-        ax.plot(med.loc[part].index, med.loc[part], color=col, lw=1, marker="o", ms=2.5)
-    ax.plot(smooth.index, smooth, color=SCEN_COLORS[scen], lw=3, label="30-yr mean (each GCM once)")
-    ax.axhline(med.loc[REF[0]:REF[1]].mean(), color="0.4", lw=0.8, ls="--")
-    chains = "CMIP6 chains" if scen == "ssp370" else "CMIP5 chains"
-    ax.set_title(f"{scen}: annual median of {len(scen_members[scen])} members ({chains}), band = 10–90 %",
-                 loc="left", fontsize=10)
-    ax.set_ylabel("mm/yr")
-axes[0].legend(loc="upper left", frameon=False)
-for scen in SCENARIOS:
-    axes[3].plot(meds[scen].index, meds[scen], color=SCEN_COLORS[scen], lw=1.2, label=scen)
-hist_ref = d[(d.scenario == "hist") & d.year.between(*REF)].groupby("year")["total_mm"].median().mean()
-axes[3].axhline(hist_ref, color="0.4", lw=0.8, ls="--")
-axes[3].set_title("Annual medians of the three scenarios on one axis (2021–2100)", loc="left", fontsize=10)
-axes[3].set_ylabel("mm/yr")
-axes[3].legend(ncol=3, loc="upper left", frameon=False)
-fig.suptitle(f"{TOTAL} annual runoff, single years (no running mean)", x=0.01, ha="left", fontsize=12)
-fig.tight_layout()
-save(fig, "02b_annual_values_total")
+def plot_annual_values(nrows, ncols, figsize, fs, name):
+    # 3 scenario panels + 1 panel with the three annual medians; 4x1 for the report, 2x2 for slides
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, sharex=True, sharey=True)
+    axes = axes.ravel()
+    meds = {}
+    for ax, scen in zip(axes, SCENARIOS):
+        med, lo, hi, smooth = annual_stats(scen)
+        meds[scen] = med.loc[2021:]
+        for part, col in [(slice(None, 2020), SCEN_COLORS["hist"]), (slice(2021, None), SCEN_COLORS[scen])]:
+            ax.fill_between(med.loc[part].index, lo.loc[part], hi.loc[part], color=col, alpha=0.12, lw=0)
+            ax.plot(med.loc[part].index, med.loc[part], color=col, lw=1, marker="o", ms=2.5)
+        ax.plot(smooth.index, smooth, color=SCEN_COLORS[scen], lw=3, label="30-yr mean (each GCM once)")
+        ax.axhline(med.loc[REF[0]:REF[1]].mean(), color="0.4", lw=0.8, ls="--")
+        chains = "CMIP6 chains" if scen == "ssp370" else "CMIP5 chains"
+        title = f"{scen}: annual median of {len(scen_members[scen])} members ({chains})"
+        ax.set_title(title + (", band = 10–90 %" if ncols == 1 else ""), loc="left", fontsize=fs)
+    for scen in SCENARIOS:
+        axes[3].plot(meds[scen].index, meds[scen], color=SCEN_COLORS[scen], lw=1.2, label=scen)
+    hist_ref = d[(d.scenario == "hist") & d.year.between(*REF)].groupby("year")["total_mm"].median().mean()
+    axes[3].axhline(hist_ref, color="0.4", lw=0.8, ls="--")
+    axes[3].set_title("Annual medians of the three scenarios (2021–2100)", loc="left", fontsize=fs)
+    axes[3].legend(ncol=3, loc="upper left", frameon=False, fontsize=fs)
+    axes[0].legend(loc="upper left", frameon=False, fontsize=fs)
+    for ax in axes:
+        ax.tick_params(labelsize=fs)
+        if ax.get_subplotspec().is_first_col():
+            ax.set_ylabel("mm/yr", fontsize=fs)
+    fig.suptitle(f"{TOTAL} annual runoff, single years (no running mean)", x=0.01, ha="left", fontsize=fs + 2)
+    fig.tight_layout()
+    save(fig, name)
+    return meds
+
+
+meds = plot_annual_values(4, 1, (10, 11), 10, "02b_annual_values_total")
+plot_annual_values(2, 2, (13, 6.6), 12, "02b_annual_values_total_slide")
 
 print("Correlation of the annual ensemble medians, 2021–2100:")
 print(pd.DataFrame(meds).corr().round(2))

@@ -178,6 +178,16 @@ function addFigure(slide, file, box, name) {
   figSlide("Results", "Annual inflow: small changes, large natural variability", "02_annual_timeseries_total.png",
     `${m(K.annual, "ssp370", FAR)} %`, `ssp370 by 2071–2100; rcp45 ${m(K.annual, "rcp45", FAR)} %, rcp26 ${m(K.annual, "rcp26", FAR)} %. Ten-year means vary by about ±10 % between models and decades, so the trend is small compared with variability.`,
     "Annual runoff of the Evanger total as % of each run's 1991-2020 mean, smoothed over 10 years. Lines are ensemble medians, bands the 10-90 % range. Under ssp370 the increase is about 9 %; under rcp26 there is no clear change by the end of the century.");
+  const ge = (scen) => K.annual_gcm_equal[`${scen}|${FAR}`];
+  s = pres.addSlide({ masterName: "CONTENT", sectionTitle: "Results" });
+  s.addText("Each GCM counted once: a clear rise only under ssp370", { placeholder: "title" });
+  addFigure(s, "02_1_annual_30yr_gcm_total.png", { x: 0.6, y: 1.3, w: 12.1, h: 3.95 }, "annual-30yr-gcm");
+  takeaway(s, 0.6, 5.4, 12.1, 1.45, `${sgn(ge("ssp370").mean, 1)} %`,
+    `ssp370 by 2071–2100 (rcp45 ${sgn(ge("rcp45").mean, 1)} %, rcp26 ${sgn(ge("rcp26").mean, 1)} %). Single GCMs range from ${sgn(ge("ssp370").min, 0)} % (${ge("ssp370").min_gcm}) to ${sgn(ge("ssp370").max, 0)} % (${ge("ssp370").max_gcm}).`);
+  s.addNotes("Same data as the previous slide, but the members of each GCM are averaged first and the window is 30 years. The ensemble has only 5 (rcp) or 6 (ssp370) GCMs, and MPI drives 6 of the 20 ssp370 members, so counting members gives MPI too much weight. Thin lines are single GCMs, the thick line is their mean. The last point, 2085, is the 2071-2100 mean. The GCMs disagree strongly, so the size of the change is uncertain even under ssp370.");
+  figSlide("Results", "Single years: wet and dry years are random in every scenario", "02b_annual_values_total_slide.png", null,
+    "rcp26 and rcp45 use the same 10 CMIP5 model chains; ssp370 uses 10 different CMIP6 chains. After 2020 the wet and dry years of the scenarios are not related. Compare scenarios only by 30-year means.",
+    "Annual runoff in mm/yr without smoothing. Thin lines: annual ensemble median; bands: 10-90 % of the members; black: historical part of the same members; thick line: 30-year mean with each GCM counted once. Bottom right: the three annual medians on one axis. rcp26 and rcp45 share their historical runs, which is why they look alike before 2020. The year-to-year ups and downs are natural variability, not a scenario effect.");
   figSlide("Results", "All sub-catchments change in a similar way", "03b_annual_change_map.png",
     `${sgn(K.basin_range_far.ssp370.min, 0)} to ${sgn(K.basin_range_far.ssp370.max, 0)} %`, "Range across the sub-catchments under ssp370, 2071–2100. The southern sub-catchments (04–08) gain the most.",
     "Ensemble-median change in annual runoff per sub-catchment, 2071-2100. The pattern is similar in all three scenarios; the spread between sub-catchments is small compared with the spread between scenarios.");
