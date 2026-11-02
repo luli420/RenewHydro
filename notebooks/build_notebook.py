@@ -198,6 +198,60 @@ save(fig, "02_annual_timeseries_total")
 """)
 
 md(r"""
+### 2b. Annual runoff, single years (no running mean)
+
+One panel per scenario: thin line = annual ensemble median (mm/yr), band = 10–90 % of the members,
+black = `hist` of the same members, thick line = 30-yr running mean with each GCM counted once.
+`rcp26` and `rcp45` use the same 10 CMIP5 chains (same `hist`); `ssp370` uses 10 other, CMIP6 chains.
+Bottom panel: the three annual medians on one axis. The printed correlations show that the
+year-to-year ups and downs are not shared between scenarios, so they are internal variability, not signal.
+""")
+
+code(r"""
+d = annual[annual.basin == TOTAL].assign(gcm=lambda x: x.model.str.split("-").str[0])
+scen_members = {s: set(d.loc[d.scenario == s, "member"]) for s in SCENARIOS}
+
+
+def annual_stats(scen):
+    # hist + scenario for the members of this scenario: annual median, 10–90 %, 30-yr GCM-equal mean
+    sub = d[d.member.isin(scen_members[scen]) & d.scenario.isin([scen, "hist"])]
+    g = sub.groupby("year")["total_mm"]
+    by_gcm = sub.groupby(["gcm", "year"])["total_mm"].mean().unstack(0)
+    smooth = by_gcm.rolling(30, center=True, min_periods=30).mean().median(axis=1)
+    return g.median(), g.quantile(.1), g.quantile(.9), smooth
+
+
+fig, axes = plt.subplots(4, 1, figsize=(10, 11), sharex=True, sharey=True)
+meds = {}
+for ax, scen in zip(axes, SCENARIOS):
+    med, lo, hi, smooth = annual_stats(scen)
+    meds[scen] = med.loc[2021:]
+    for part, col in [(slice(None, 2020), SCEN_COLORS["hist"]), (slice(2021, None), SCEN_COLORS[scen])]:
+        ax.fill_between(med.loc[part].index, lo.loc[part], hi.loc[part], color=col, alpha=0.12, lw=0)
+        ax.plot(med.loc[part].index, med.loc[part], color=col, lw=1, marker="o", ms=2.5)
+    ax.plot(smooth.index, smooth, color=SCEN_COLORS[scen], lw=3, label="30-yr mean (each GCM once)")
+    ax.axhline(med.loc[REF[0]:REF[1]].mean(), color="0.4", lw=0.8, ls="--")
+    chains = "CMIP6 chains" if scen == "ssp370" else "CMIP5 chains"
+    ax.set_title(f"{scen}: annual median of {len(scen_members[scen])} members ({chains}), band = 10–90 %",
+                 loc="left", fontsize=10)
+    ax.set_ylabel("mm/yr")
+axes[0].legend(loc="upper left", frameon=False)
+for scen in SCENARIOS:
+    axes[3].plot(meds[scen].index, meds[scen], color=SCEN_COLORS[scen], lw=1.2, label=scen)
+hist_ref = d[(d.scenario == "hist") & d.year.between(*REF)].groupby("year")["total_mm"].median().mean()
+axes[3].axhline(hist_ref, color="0.4", lw=0.8, ls="--")
+axes[3].set_title("Annual medians of the three scenarios on one axis (2021–2100)", loc="left", fontsize=10)
+axes[3].set_ylabel("mm/yr")
+axes[3].legend(ncol=3, loc="upper left", frameon=False)
+fig.suptitle(f"{TOTAL} annual runoff, single years (no running mean)", x=0.01, ha="left", fontsize=12)
+fig.tight_layout()
+save(fig, "02b_annual_values_total")
+
+print("Correlation of the annual ensemble medians, 2021–2100:")
+print(pd.DataFrame(meds).corr().round(2))
+""")
+
+md(r"""
 ## 3. Change in mean annual runoff, all basins
 
 Ensemble median of the member-wise change (%). Bottom row = EVANGER_TOTAL.
